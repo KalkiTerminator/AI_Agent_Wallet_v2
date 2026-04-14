@@ -14,29 +14,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
 
-        const res = await fetch(`${API_BASE}/auth/login`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: credentials.email,
-            password: credentials.password,
-          }),
-        });
+        try {
+          const res = await fetch(`${API_BASE}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              email: credentials.email,
+              password: credentials.password,
+            }),
+          });
 
-        if (!res.ok) return null;
+          if (!res.ok) return null;
 
-        const data = await res.json() as {
-          token: string;
-          user: { id: string; email: string; fullName: string | null; role: string };
-        };
+          const data = await res.json() as {
+            token: string;
+            user: { id: string; email: string; fullName: string | null; role: string };
+          };
 
-        return {
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.fullName ?? data.user.email,
-          role: data.user.role,
-          token: data.token,
-        };
+          if (!data?.token || !data?.user?.id) return null;
+
+          return {
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.fullName ?? data.user.email,
+            role: data.user.role,
+            token: data.token,
+          };
+        } catch {
+          return null;
+        }
       },
     }),
   ],
