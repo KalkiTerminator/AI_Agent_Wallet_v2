@@ -12,7 +12,7 @@ creditsRouter.get("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
   const [row] = await db.select().from(credits).where(eq(credits.userId, user.userId)).limit(1);
   if (!row) return c.json({ error: "Credits not found" }, 404);
-  return c.json({ data: { currentCredits: row.currentCredits, userId: row.userId } });
+  return c.json({ data: { currentCredits: row.currentCredits } });
 });
 
 export { creditsRouter };

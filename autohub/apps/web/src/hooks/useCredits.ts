@@ -11,11 +11,15 @@ export function useCredits() {
 
   useEffect(() => {
     if (!session?.apiToken) return;
+    let cancelled = false;
+    setLoading(true);
+    setCredits(null);
     apiClient
       .get<{ data: CreditBalance }>("/api/credits", session.apiToken)
-      .then((res) => setCredits(res.data.currentCredits))
-      .catch(() => setCredits(null))
-      .finally(() => setLoading(false));
+      .then((res) => { if (!cancelled) setCredits(res.data.currentCredits); })
+      .catch(() => { if (!cancelled) setCredits(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [session?.apiToken]);
 
   return { credits, loading };

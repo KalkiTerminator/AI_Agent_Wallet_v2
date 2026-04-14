@@ -91,7 +91,7 @@ export function SidebarClient({ user }: SidebarClientProps) {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-[11px] font-medium truncate">{user.name || user.email}</p>
-            {user.role !== "user" && (
+            {user.role === "admin" && (
               <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 rounded">{user.role}</Badge>
             )}
           </div>
