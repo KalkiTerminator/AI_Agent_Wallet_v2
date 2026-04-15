@@ -1,4 +1,4 @@
-import type { FieldTypeOption, OutputTypeOption } from "./types";
+import type { FieldTypeOption, OutputTypeOption } from "./types.js";
 
 export const TOOL_CATEGORIES = [
   "Text Processing",
