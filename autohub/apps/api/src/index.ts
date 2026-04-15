@@ -1,4 +1,6 @@
+import "./instrument.js"; // Sentry must be imported before everything else
 import "dotenv/config";
+import * as Sentry from "@sentry/node";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -42,3 +44,9 @@ app.route("/api/credits", creditsRouter);
 const port = Number(process.env.PORT ?? 4000);
 console.log(`AutoHub API running on http://localhost:${port}`);
 serve({ fetch: app.fetch, port });
+
+// Flush Sentry on graceful shutdown
+process.on("SIGTERM", async () => {
+  await Sentry.close(2000);
+  process.exit(0);
+});
