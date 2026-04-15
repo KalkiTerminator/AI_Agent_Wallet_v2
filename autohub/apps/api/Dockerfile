@@ -23,12 +23,13 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY turbo.json ./
 
-RUN cd apps/api && pnpm run build
+RUN cd packages/shared && pnpm run build && cd /app && cd apps/api && pnpm run build
 
 # ── Runtime image ─────────────────────────────────────────────────────────────
 # WORKDIR is /app/apps/api so node_modules resolution walks up correctly:
 #   /app/apps/api/node_modules  (dotenv, hono, stripe, etc.)
 #   /app/node_modules           (hoisted shared deps)
+#   /app/packages/shared        (workspace package resolved via symlink)
 FROM node:20-alpine AS runner
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
@@ -36,6 +37,8 @@ ENV NODE_ENV=production
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/node_modules ./node_modules
 COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/packages/shared/dist /app/packages/shared/dist
+COPY --from=builder /app/packages/shared/package.json /app/packages/shared/package.json
 COPY apps/api/package.json ./
 
 EXPOSE 4000
