@@ -10,7 +10,8 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-# Full install so zod lands in packages/shared/node_modules (not just hoisted)
+# --shamefully-hoist=false ensures each package gets its own node_modules
+# so zod is in packages/shared/node_modules and dotenv is in apps/api/node_modules
 RUN pnpm install --frozen-lockfile --shamefully-hoist=false
 
 # ── Build ─────────────────────────────────────────────────────────────────────
@@ -25,13 +26,16 @@ COPY turbo.json ./
 RUN cd apps/api && pnpm run build
 
 # ── Runtime image ─────────────────────────────────────────────────────────────
+# WORKDIR is /app/apps/api so node_modules resolution walks up correctly:
+#   /app/apps/api/node_modules  (dotenv, hono, stripe, etc.)
+#   /app/node_modules           (hoisted shared deps)
 FROM node:20-alpine AS runner
-WORKDIR /app
+WORKDIR /app/apps/api
 ENV NODE_ENV=production
 
 COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/node_modules ./node_modules
+COPY --from=builder /app/node_modules /app/node_modules
 COPY apps/api/package.json ./
 
 EXPOSE 4000
