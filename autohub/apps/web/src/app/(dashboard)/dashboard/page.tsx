@@ -1,5 +1,6 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useCredits } from "@/hooks/useCredits";
 import { useTools } from "@/hooks/useTools";
 import { useToolQueue } from "@/hooks/useToolQueue";
@@ -11,7 +12,7 @@ import type { DashboardLayout } from "@/components/dashboard/LayoutToggle";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search } from "lucide-react";
+import { Search, CheckCircle, XCircle, X } from "lucide-react";
 import type { AITool } from "@/types";
 import { TOOL_CATEGORIES } from "@autohub/shared";
 
@@ -19,12 +20,26 @@ export default function DashboardPage() {
   const { credits } = useCredits();
   const { tools, loading: toolsLoading, favorites, toggleFavorite } = useTools();
   const { queue, isProcessing, addToQueue, processQueue, removeFromQueue, clearCompleted } = useToolQueue();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [layout, setLayout] = useState<DashboardLayout>("compact");
   const [selectedTool, setSelectedTool] = useState<AITool | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [paymentBanner, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
+
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    if (payment === "success" || payment === "cancelled") {
+      setPaymentBanner(payment);
+      // Strip query param from URL without full reload
+      router.replace("/dashboard");
+      const timer = setTimeout(() => setPaymentBanner(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, router]);
 
   const filtered = useMemo(() => {
     let list = tools;
@@ -52,6 +67,31 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-4">
+      {/* Payment banner */}
+      {paymentBanner && (
+        <div
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-xs font-medium ${
+            paymentBanner === "success"
+              ? "bg-success/10 text-success border border-success/20"
+              : "bg-muted text-muted-foreground border border-border"
+          }`}
+        >
+          {paymentBanner === "success" ? (
+            <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <XCircle className="h-3.5 w-3.5 shrink-0" />
+          )}
+          <span className="flex-1">
+            {paymentBanner === "success"
+              ? "Payment successful! Your credits have been added."
+              : "Payment cancelled. No charges were made."}
+          </span>
+          <button onClick={() => setPaymentBanner(null)} className="ml-1 opacity-60 hover:opacity-100">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LayoutDashboard, BarChart2, Settings, Zap } from "lucide-react";
+import { LayoutDashboard, BarChart2, Settings, CreditCard, Zap } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -21,6 +21,7 @@ interface CommandPaletteProps {
 const NAV_ITEMS = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { label: "Usage", href: "/usage", icon: BarChart2 },
+  { label: "Billing", href: "/billing", icon: CreditCard },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
