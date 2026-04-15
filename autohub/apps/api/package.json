@@ -1,0 +1,39 @@
+{
+  "name": "@autohub/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hono": "^4.7.4",
+    "@hono/node-server": "^1.13.7",
+    "@hono/zod-validator": "^0.4.2",
+    "@autohub/shared": "workspace:*",
+    "drizzle-orm": "^0.40.0",
+    "pg": "^8.13.3",
+    "bcryptjs": "^3.0.2",
+    "stripe": "^17.7.0",
+    "zod": "^3.24.2",
+    "@sentry/node": "^8.51.0",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.9.16",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.11",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/nodemailer": "^6.4.17",
+    "@types/node": "^22",
+    "typescript": "^5.7.2",
+    "tsx": "^4.19.2",
+    "drizzle-kit": "^0.30.4",
+    "vitest": "^3.0.8"
+  }
+}
