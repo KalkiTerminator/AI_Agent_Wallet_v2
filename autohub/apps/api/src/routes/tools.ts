@@ -48,6 +48,49 @@ toolsRouter.get("/usage", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) =
   return c.json({ data: rows, meta: { page, limit, total: Number(total) } });
 });
 
+// POST /api/tools — submit a new tool (approval required)
+toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{
+    name: string;
+    description: string;
+    category: string;
+    creditCost?: number;
+    inputFields?: unknown[];
+    iconUrl?: string;
+    webhookUrl?: string;
+    outputType?: string;
+    webhookTimeout?: number;
+    webhookRetries?: number;
+  }>();
+
+  if (!body.name?.trim()) return c.json({ error: "name is required" }, 400);
+  if (!body.description?.trim()) return c.json({ error: "description is required" }, 400);
+  if (!body.category?.trim()) return c.json({ error: "category is required" }, 400);
+
+  const [tool] = await db
+    .insert(aiTools)
+    .values({
+      name: body.name.trim(),
+      description: body.description.trim(),
+      category: body.category,
+      creditCost: body.creditCost ?? 1,
+      inputFields: body.inputFields ?? [],
+      iconUrl: body.iconUrl ?? null,
+      webhookUrl: body.webhookUrl ?? null,
+      hasWebhook: !!body.webhookUrl,
+      outputType: body.outputType ?? "smart",
+      webhookTimeout: body.webhookTimeout ?? 30,
+      webhookRetries: body.webhookRetries ?? 2,
+      approvalStatus: "pending",
+      isActive: false,
+      createdByUserId: user.userId,
+    })
+    .returning();
+
+  return c.json({ data: tool }, 201);
+});
+
 // GET /api/tools/:id
 toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");

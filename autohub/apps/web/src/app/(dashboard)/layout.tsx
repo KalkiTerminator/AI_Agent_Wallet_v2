@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { SidebarClient } from "@/components/dashboard/SidebarClient";
 import { CommandPalette } from "@/components/shared/CommandPalette";
+import { OnboardingDialog } from "@/components/shared/OnboardingDialog";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -12,6 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <SidebarClient user={{ name: session.user.name ?? "", email: session.user.email ?? "", role: session.user.role }} />
       <main className="flex-1 overflow-auto">{children}</main>
       <CommandPalette />
+      <OnboardingDialog />
     </div>
   );
 }

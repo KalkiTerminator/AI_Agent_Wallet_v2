@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { LayoutDashboard, BarChart2, Settings, CreditCard, LogOut, Zap, Shield } from "lucide-react";
+import { LayoutDashboard, BarChart2, Settings, CreditCard, Wrench, LogOut, Zap, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -16,6 +16,7 @@ interface SidebarClientProps {
 const navLinks = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/usage", label: "Usage", icon: BarChart2 },
+  { href: "/tools/mine", label: "My Tools", icon: Wrench },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
