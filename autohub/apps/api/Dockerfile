@@ -39,6 +39,7 @@ COPY --from=builder /app/apps/api/node_modules ./node_modules
 COPY --from=builder /app/node_modules /app/node_modules
 COPY --from=builder /app/packages/shared/dist /app/packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json /app/packages/shared/package.json
+COPY --from=builder /app/packages/shared/node_modules /app/packages/shared/node_modules
 COPY apps/api/package.json ./
 
 EXPOSE 4000
