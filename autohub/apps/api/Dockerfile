@@ -11,15 +11,14 @@ FROM base AS deps
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-# Install only the deps needed for @autohub/api and its workspace deps
-RUN pnpm install --frozen-lockfile --filter @autohub/api...
+# Install all workspace deps (shared needs zod, api needs hono etc.)
+RUN pnpm install --frozen-lockfile --filter @autohub/api... --filter @autohub/shared...
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 FROM base AS builder
 # Copy installed node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-# shared has no separate node_modules (deps hoisted to root)
 # Copy source
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
