@@ -1,29 +1,27 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Build from the monorepo root:
-#   docker build -f apps/api/Dockerfile -t autohub-api .
+# Build from the monorepo root (root directory = autohub/ in Railway)
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:20-alpine AS base
 WORKDIR /app
 RUN corepack enable pnpm
 
-# ── Install dependencies (workspace-aware) ────────────────────────────────────
+# ── Install ALL workspace dependencies ────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .pnpmfile.cjs ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-# Install all workspace deps (shared needs zod, api needs hono etc.)
-RUN pnpm install --frozen-lockfile --filter @autohub/api... --filter @autohub/shared...
+# Full install so zod lands in packages/shared/node_modules (not just hoisted)
+RUN pnpm install --frozen-lockfile --shamefully-hoist=false
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 FROM base AS builder
-# Copy installed node_modules from deps stage
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /app/apps/api/node_modules ./apps/api/node_modules
-# Copy source
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 COPY turbo.json ./
-# Compile TypeScript
+
 RUN cd apps/api && pnpm run build
 
 # ── Runtime image ─────────────────────────────────────────────────────────────
