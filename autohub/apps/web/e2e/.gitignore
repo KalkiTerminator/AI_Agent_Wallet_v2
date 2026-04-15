@@ -1,0 +1,4 @@
+# Browser storage state contains session tokens — never commit
+.auth/
+test-results/
+playwright-report/
