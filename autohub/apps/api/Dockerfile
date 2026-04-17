@@ -41,6 +41,7 @@ COPY --from=builder /app/packages/shared/dist /app/packages/shared/dist
 COPY --from=builder /app/packages/shared/package.json /app/packages/shared/package.json
 COPY --from=builder /app/packages/shared/node_modules /app/packages/shared/node_modules
 COPY apps/api/package.json ./
+COPY --from=builder /app/apps/api/src/db/migrations ./dist/db/migrations
 
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
