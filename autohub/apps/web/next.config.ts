@@ -6,8 +6,10 @@ const nextConfig: NextConfig = {
 };
 
 export default withSentryConfig(nextConfig, {
-  // Suppress Sentry CLI output unless debugging
   silent: !process.env.CI,
-  // Automatically instrument server components / API routes
   autoInstrumentServerFunctions: true,
+  sourcemaps: {
+    disable: !process.env.SENTRY_AUTH_TOKEN,
+  },
+  telemetry: false,
 });
