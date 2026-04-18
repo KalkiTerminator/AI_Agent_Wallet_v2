@@ -16,7 +16,17 @@ export interface AITool {
   webhookTimeout?: number;
   webhookRetries?: number;
   createdByUserId?: string | null;
+  visibility?: ToolVisibility;
+  toolStatus?: ToolStatus;
+  enabled?: boolean;
+  executionMode?: ExecutionMode;
 }
+
+// ─── Tool Enums ─────────────────────────────────────────
+export type ToolStatus = "draft" | "pending_approval" | "approved" | "rejected" | "archived";
+export type ToolVisibility = "private" | "public";
+export type ExecutionMode = "sync" | "async";
+export type ExecutionStatus = "pending" | "success" | "failed" | "timeout";
 
 export interface InputField {
   id?: string;
@@ -156,4 +166,26 @@ export interface OutputTypeOption {
   value: string;
   label: string;
   category: string;
+}
+
+// ─── Execution ───────────────────────────────────────────
+export interface Execution {
+  id: string;
+  toolId: string;
+  userId: string;
+  status: ExecutionStatus;
+  requestPayload?: unknown;
+  responsePayload?: unknown;
+  error?: string | null;
+  creditsDebited: number;
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+// ─── Tool Access ─────────────────────────────────────────
+export interface ToolAccess {
+  toolId: string;
+  userId: string;
+  grantedBy?: string | null;
+  grantedAt: string;
 }

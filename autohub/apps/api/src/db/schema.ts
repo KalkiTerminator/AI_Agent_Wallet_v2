@@ -1,14 +1,12 @@
 import {
-  pgTable,
-  uuid,
-  text,
-  integer,
-  boolean,
-  timestamp,
-  jsonb,
-  unique,
-  index,
+  pgTable, pgEnum,
+  uuid, text, integer, boolean, timestamp, jsonb, unique, index,
 } from "drizzle-orm/pg-core";
+
+export const toolStatusEnum = pgEnum("tool_status", ["draft", "pending_approval", "approved", "rejected", "archived"]);
+export const toolVisibilityEnum = pgEnum("tool_visibility", ["private", "public"]);
+export const executionModeEnum = pgEnum("execution_mode", ["sync", "async"]);
+export const executionStatusEnum = pgEnum("execution_status", ["pending", "success", "failed", "timeout"]);
 
 // ─── users ──────────────────────────────────────────────
 export const users = pgTable("users", {
@@ -55,6 +53,12 @@ export const aiTools = pgTable("ai_tools", {
   approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),
   isActive: boolean("is_active").notNull().default(true),
   createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  visibility: toolVisibilityEnum("visibility").notNull().default("private"),
+  toolStatus: toolStatusEnum("tool_status").notNull().default("draft"),
+  enabled: boolean("enabled").notNull().default(true),
+  executionMode: executionModeEnum("execution_mode").notNull().default("sync"),
+  signingSecretHash: text("signing_secret_hash"),
+  rejectionReason: text("rejection_reason"),
   webhookTimeout: integer("webhook_timeout").notNull().default(30),
   webhookRetries: integer("webhook_retries").notNull().default(2),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -155,3 +159,36 @@ export const orgMembers = pgTable("org_members", {
   role: text("role", { enum: ["owner", "admin", "member"] }).notNull().default("member"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.orgId, t.userId)]);
+
+// ─── tool_access ────────────────────────────────────────
+export const toolAccess = pgTable("tool_access", {
+  toolId: uuid("tool_id").notNull().references(() => aiTools.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
+  grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [unique().on(t.toolId, t.userId)]);
+
+// ─── executions ─────────────────────────────────────────
+export const executions = pgTable("executions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  toolId: uuid("tool_id").notNull().references(() => aiTools.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: executionStatusEnum("status").notNull().default("pending"),
+  requestPayload: jsonb("request_payload"),
+  responsePayload: jsonb("response_payload"),
+  error: text("error"),
+  creditsDebited: integer("credits_debited").notNull().default(0),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (t) => [
+  index("executions_tool_id_idx").on(t.toolId),
+  index("executions_user_id_idx").on(t.userId),
+]);
+
+// ─── password_reset_tokens ──────────────────────────────
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
