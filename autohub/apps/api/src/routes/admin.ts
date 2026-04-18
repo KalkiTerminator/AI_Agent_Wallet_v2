@@ -86,4 +86,32 @@ adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   return c.json({ data: updated });
 });
 
+// PATCH /api/admin/users/:id/role — change user role
+adminRouter.patch("/users/:id/role", rateLimit(RATE_LIMITS.READS), async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json<{ role: "user" | "moderator" | "admin" }>();
+  if (!["user", "moderator", "admin"].includes(body.role)) {
+    return c.json({ error: "Invalid role" }, 400);
+  }
+  const [updated] = await db
+    .update(userRoles)
+    .set({ role: body.role })
+    .where(eq(userRoles.userId, id))
+    .returning();
+  if (!updated) return c.json({ error: "User not found" }, 404);
+  return c.json({ data: updated });
+});
+
+// DELETE /api/admin/users/:id — soft-deactivate user
+adminRouter.delete("/users/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
+  const { id } = c.req.param();
+  const [updated] = await db
+    .update(users)
+    .set({ isActive: false })
+    .where(eq(users.id, id))
+    .returning({ id: users.id, isActive: users.isActive });
+  if (!updated) return c.json({ error: "User not found" }, 404);
+  return c.json({ data: updated });
+});
+
 export { adminRouter };

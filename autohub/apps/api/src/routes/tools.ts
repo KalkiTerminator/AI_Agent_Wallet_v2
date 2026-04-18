@@ -1,8 +1,9 @@
 import { Hono } from "hono";
 import { eq, and, desc, count } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { aiTools, toolUsages } from "../db/schema.js";
+import { aiTools, toolUsages, toolAccess } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireRole } from "../middleware/rbac.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
@@ -89,6 +90,106 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
     .returning();
 
   return c.json({ data: tool }, 201);
+});
+
+// PATCH /api/tools/:id/submit — moderator submits draft for approval
+toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  if (tool.toolStatus !== "draft" && tool.toolStatus !== "rejected") {
+    return c.json({ error: "Tool must be in draft or rejected state" }, 400);
+  }
+  const [updated] = await db
+    .update(aiTools)
+    .set({ toolStatus: "pending_approval", rejectionReason: null, updatedAt: new Date() })
+    .where(eq(aiTools.id, id))
+    .returning();
+  return c.json({ data: updated });
+});
+
+// PATCH /api/tools/:id/status — admin approves/rejects/archives
+toolsRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (c) => {
+  const { id } = c.req.param();
+  const body = await c.req.json<{ status: "approved" | "rejected" | "archived"; reason?: string }>();
+  if (!["approved", "rejected", "archived"].includes(body.status)) {
+    return c.json({ error: "Invalid status" }, 400);
+  }
+  const updates: Partial<typeof aiTools.$inferInsert> = {
+    toolStatus: body.status,
+    updatedAt: new Date(),
+  };
+  if (body.status === "approved") {
+    updates.approvalStatus = "approved";
+    updates.isActive = true;
+    updates.rejectionReason = null;
+  }
+  if (body.status === "rejected") {
+    updates.approvalStatus = "rejected";
+    updates.isActive = false;
+    updates.rejectionReason = body.reason ?? null;
+  }
+  if (body.status === "archived") {
+    updates.isActive = false;
+  }
+  const [updated] = await db.update(aiTools).set(updates).where(eq(aiTools.id, id)).returning();
+  if (!updated) return c.json({ error: "Tool not found" }, 404);
+  return c.json({ data: updated });
+});
+
+// PATCH /api/tools/:id/visibility — moderator/admin toggles public/private
+toolsRouter.patch("/:id/visibility", requireAuth, requireRole("moderator"), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const body = await c.req.json<{ visibility: "private" | "public" }>();
+  if (!["private", "public"].includes(body.visibility)) {
+    return c.json({ error: "Invalid visibility" }, 400);
+  }
+  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  const updates: Partial<typeof aiTools.$inferInsert> = { visibility: body.visibility, updatedAt: new Date() };
+  if (body.visibility === "public" && tool.toolStatus === "approved") {
+    updates.toolStatus = "pending_approval";
+    updates.approvalStatus = "pending";
+    updates.isActive = false;
+  }
+  const [updated] = await db.update(aiTools).set(updates).where(eq(aiTools.id, id)).returning();
+  return c.json({ data: updated });
+});
+
+// POST /api/tools/:id/access — moderator grants access to a user
+toolsRouter.post("/:id/access", requireAuth, requireRole("moderator"), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const body = await c.req.json<{ userId: string }>();
+  if (!body.userId) return c.json({ error: "userId is required" }, 400);
+  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  await db.insert(toolAccess).values({ toolId: id, userId: body.userId, grantedBy: user.userId }).onConflictDoNothing();
+  return c.json({ data: { toolId: id, userId: body.userId } }, 201);
+});
+
+// DELETE /api/tools/:id/access/:userId — moderator revokes access
+toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"), async (c) => {
+  const user = c.get("user");
+  const { id, userId } = c.req.param();
+  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+  await db.delete(toolAccess).where(and(eq(toolAccess.toolId, id), eq(toolAccess.userId, userId)));
+  return c.json({ data: { success: true } });
 });
 
 // GET /api/tools/:id
