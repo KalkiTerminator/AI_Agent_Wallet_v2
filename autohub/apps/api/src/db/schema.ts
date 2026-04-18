@@ -1,6 +1,6 @@
 import {
   pgTable, pgEnum,
-  uuid, text, integer, boolean, timestamp, jsonb, unique, index,
+  uuid, text, integer, boolean, timestamp, jsonb, unique, index, primaryKey,
 } from "drizzle-orm/pg-core";
 
 export const toolStatusEnum = pgEnum("tool_status", ["draft", "pending_approval", "approved", "rejected", "archived"]);
@@ -166,7 +166,10 @@ export const toolAccess = pgTable("tool_access", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   grantedBy: uuid("granted_by").references(() => users.id, { onDelete: "set null" }),
   grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.toolId, t.userId)]);
+}, (t) => [
+  primaryKey({ columns: [t.toolId, t.userId] }),
+  index("tool_access_user_id_idx").on(t.userId),
+]);
 
 // ─── executions ─────────────────────────────────────────
 export const executions = pgTable("executions", {

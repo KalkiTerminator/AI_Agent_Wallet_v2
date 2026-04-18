@@ -20,6 +20,8 @@ export interface AITool {
   toolStatus?: ToolStatus;
   enabled?: boolean;
   executionMode?: ExecutionMode;
+  // Note: visibility/toolStatus/enabled/executionMode are notNull in DB but optional here
+  // for backwards compat — existing API responses from GET /tools may not include them
 }
 
 // ─── Tool Enums ─────────────────────────────────────────
