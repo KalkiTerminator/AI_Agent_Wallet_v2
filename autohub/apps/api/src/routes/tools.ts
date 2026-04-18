@@ -207,7 +207,7 @@ toolsRouter.post("/:id/execute", requireAuth, rateLimit(RATE_LIMITS.TOOL_EXECUTE
   const body = await c.req.json();
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? undefined;
 
-  const result = await ToolExecutionService.execute({ toolId, userId: user.userId, inputs: body.inputs ?? {}, ip });
+  const result = await ToolExecutionService.execute({ toolId, userId: user.userId, userRole: user.role, inputs: body.inputs ?? {}, ip });
   return c.json({ data: result });
 });
 

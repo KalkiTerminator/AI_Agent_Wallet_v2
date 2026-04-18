@@ -6,12 +6,13 @@ import type { ToolUsageStatus } from "@autohub/shared";
 interface ExecuteParams {
   toolId: string;
   userId: string;
+  userRole?: string;
   inputs: Record<string, unknown>;
   ip?: string;
 }
 
 export class ToolExecutionService {
-  static async execute({ toolId, userId, inputs, ip }: ExecuteParams) {
+  static async execute({ toolId, userId, userRole, inputs, ip }: ExecuteParams) {
     // Load tool
     const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, toolId)).limit(1);
     if (!tool) throw Object.assign(new Error("Tool not found"), { status: 404 });
@@ -19,34 +20,51 @@ export class ToolExecutionService {
       throw Object.assign(new Error("Tool not available"), { status: 400 });
     }
 
-    // Check credits (atomic check)
-    const [creditRow] = await db.select().from(credits).where(eq(credits.userId, userId)).limit(1);
-    if (!creditRow || creditRow.currentCredits < tool.creditCost) {
-      throw Object.assign(new Error("Insufficient credits"), { status: 402 });
-    }
+    const isAdmin = userRole === "admin";
 
-    // Phase 1: Deduct credits + insert usage record (in transaction)
-    const [usage] = await db.transaction(async (tx) => {
-      // Atomic deduction
-      await tx.execute(
-        sql`UPDATE credits SET current_credits = current_credits - ${tool.creditCost} WHERE user_id = ${userId} AND current_credits >= ${tool.creditCost}`
-      );
-
-      // Re-check (race condition guard)
-      const [updated] = await tx.select().from(credits).where(eq(credits.userId, userId)).limit(1);
-      if (!updated || updated.currentCredits < 0) {
+    if (!isAdmin) {
+      // Check credits (atomic check)
+      const [creditRow] = await db.select().from(credits).where(eq(credits.userId, userId)).limit(1);
+      if (!creditRow || creditRow.currentCredits < tool.creditCost) {
         throw Object.assign(new Error("Insufficient credits"), { status: 402 });
       }
+    }
 
-      return tx.insert(toolUsages).values({
+    // Phase 1: Deduct credits + insert usage record
+    let usage: typeof toolUsages.$inferSelect;
+    if (isAdmin) {
+      [usage] = await db.insert(toolUsages).values({
         userId,
         toolId,
         inputData: inputs,
-        creditsUsed: tool.creditCost,
+        creditsUsed: 0,
         status: "pending",
         ipAddress: ip,
       }).returning();
-    });
+    } else {
+      // Deduct credits + insert usage record (in transaction)
+      [usage] = await db.transaction(async (tx) => {
+        // Atomic deduction
+        await tx.execute(
+          sql`UPDATE credits SET current_credits = current_credits - ${tool.creditCost} WHERE user_id = ${userId} AND current_credits >= ${tool.creditCost}`
+        );
+
+        // Re-check (race condition guard)
+        const [updated] = await tx.select().from(credits).where(eq(credits.userId, userId)).limit(1);
+        if (!updated || updated.currentCredits < 0) {
+          throw Object.assign(new Error("Insufficient credits"), { status: 402 });
+        }
+
+        return tx.insert(toolUsages).values({
+          userId,
+          toolId,
+          inputData: inputs,
+          creditsUsed: tool.creditCost,
+          status: "pending",
+          ipAddress: ip,
+        }).returning();
+      });
+    }
 
     if (!tool.webhookUrl) {
       await db.update(toolUsages).set({ status: "success", completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
