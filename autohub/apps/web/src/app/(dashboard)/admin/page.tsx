@@ -3,18 +3,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Users, Zap, DollarSign, CheckCircle, XCircle, Clock, ToggleLeft, ToggleRight } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Users, Zap, DollarSign, Plus } from "lucide-react";
+import { UserRoleManager } from "@/components/admin/UserRoleManager";
+import { ToolApprovalManager } from "@/components/admin/ToolApprovalManager";
+import { ToolManagement } from "@/components/admin/ToolManagement";
+import { ToolCreationForm } from "@/components/admin/ToolCreationForm";
 import type { UserWithRole, AITool } from "@/types";
 
 interface AdminAnalytics {
@@ -25,14 +21,12 @@ interface AdminAnalytics {
 
 export default function AdminPage() {
   const { data: session, status } = useSession();
-
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [tools, setTools] = useState<AITool[]>([]);
   const [loading, setLoading] = useState(true);
-  const [togglingTool, setTogglingTool] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
-  // Redirect non-admins once session is loaded
   useEffect(() => {
     if (status === "authenticated" && session?.user?.role !== "admin") {
       redirect("/dashboard");
@@ -43,66 +37,40 @@ export default function AdminPage() {
     if (!session?.apiToken) return;
     setLoading(true);
     try {
-      const [analyticsRes, usersRes, toolsRes] = await Promise.all([
+      const [ar, ur, tr] = await Promise.all([
         apiClient.get<{ data: AdminAnalytics }>("/api/admin/analytics", session.apiToken),
         apiClient.get<{ data: UserWithRole[] }>("/api/admin/users", session.apiToken),
         apiClient.get<{ data: AITool[] }>("/api/admin/tools", session.apiToken),
       ]);
-      setAnalytics(analyticsRes.data);
-      setUsers(usersRes.data);
-      setTools(toolsRes.data);
+      setAnalytics(ar.data);
+      setUsers(ur.data);
+      setTools(tr.data);
     } finally {
       setLoading(false);
     }
   }, [session?.apiToken]);
 
-  useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
-
-  async function handleApproval(toolId: string, approvalStatus: "approved" | "rejected") {
-    if (!session?.apiToken) return;
-    setTogglingTool(toolId);
-    try {
-      const res = await apiClient.patch<{ data: AITool }>(
-        `/api/admin/tools/${toolId}`,
-        { approvalStatus },
-        session.apiToken
-      );
-      setTools((prev) => prev.map((t) => (t.id === toolId ? { ...t, ...res.data } : t)));
-    } finally {
-      setTogglingTool(null);
-    }
-  }
-
-  async function handleToggleActive(tool: AITool) {
-    if (!session?.apiToken) return;
-    setTogglingTool(tool.id);
-    try {
-      const res = await apiClient.patch<{ data: AITool }>(
-        `/api/admin/tools/${tool.id}`,
-        { isActive: !tool.isActive },
-        session.apiToken
-      );
-      setTools((prev) => prev.map((t) => (t.id === tool.id ? { ...t, ...res.data } : t)));
-    } finally {
-      setTogglingTool(null);
-    }
-  }
-
-  const pendingTools = tools.filter((t) => t.approvalStatus === "pending");
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   if (status === "loading" || loading) {
     return (
       <div className="p-6 space-y-6">
         <Skeleton className="h-7 w-32" />
         <div className="grid grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)}
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
         </div>
         <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
+
+  const statCards = [
+    { icon: Users, label: "Users", value: analytics?.totalUsers ?? 0 },
+    { icon: Zap, label: "Executions", value: analytics?.totalUsages ?? 0 },
+    { icon: DollarSign, label: "Revenue", value: `$${((analytics?.totalRevenueCents ?? 0) / 100).toFixed(2)}` },
+  ];
 
   return (
     <div className="p-6 space-y-6">
@@ -111,187 +79,61 @@ export default function AdminPage() {
         <p className="text-xs text-muted-foreground mt-0.5">Platform overview and moderation</p>
       </div>
 
-      {/* Stats cards */}
-      {analytics && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {statCards.map(({ icon: Icon, label, value }) => (
+          <div key={label} className="glass rounded-xl p-4 flex items-center gap-3">
             <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Users className="h-4 w-4 text-primary" />
+              <Icon className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Users</p>
-              <p className="text-xl font-bold font-mono">{analytics.totalUsers}</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{label}</p>
+              <p className="text-xl font-bold font-mono">{value}</p>
             </div>
           </div>
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Zap className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Executions</p>
-              <p className="text-xl font-bold font-mono">{analytics.totalUsages}</p>
-            </div>
-          </div>
-          <div className="glass rounded-xl p-4 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <DollarSign className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Revenue</p>
-              <p className="text-xl font-bold font-mono">
-                ${(analytics.totalRevenueCents / 100).toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Pending approvals */}
-      {pendingTools.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold flex items-center gap-1.5">
-            <Clock className="h-3.5 w-3.5 text-warning" />
-            Pending Approvals
-            <Badge variant="secondary" className="text-[10px] ml-1">{pendingTools.length}</Badge>
-          </h2>
-          <div className="glass rounded-xl overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Tool</TableHead>
-                  <TableHead className="text-xs">Category</TableHead>
-                  <TableHead className="text-xs text-right">Cost</TableHead>
-                  <TableHead className="text-xs text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingTools.map((tool) => (
-                  <TableRow key={tool.id}>
-                    <TableCell className="text-xs font-medium">{tool.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{tool.category}</TableCell>
-                    <TableCell className="text-xs text-right font-mono">{tool.creditCost}cr</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-[10px] text-success border-success/30 hover:bg-success/10"
-                          disabled={togglingTool === tool.id}
-                          onClick={() => handleApproval(tool.id, "approved")}
-                        >
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-[10px] text-destructive border-destructive/30 hover:bg-destructive/10"
-                          disabled={togglingTool === tool.id}
-                          onClick={() => handleApproval(tool.id, "rejected")}
-                        >
-                          <XCircle className="h-3 w-3 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      )}
-
-      {/* All tools */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold">All Tools</h2>
-        <div className="glass rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Name</TableHead>
-                <TableHead className="text-xs">Category</TableHead>
-                <TableHead className="text-xs">Status</TableHead>
-                <TableHead className="text-xs text-right">Cost</TableHead>
-                <TableHead className="text-xs text-right">Active</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tools.map((tool) => (
-                <TableRow key={tool.id}>
-                  <TableCell className="text-xs font-medium">{tool.name}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{tool.category}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant="outline"
-                      className={`text-[10px] ${
-                        tool.approvalStatus === "approved"
-                          ? "text-success border-success/30"
-                          : tool.approvalStatus === "rejected"
-                          ? "text-destructive border-destructive/30"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {tool.approvalStatus ?? "pending"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-right font-mono">{tool.creditCost}cr</TableCell>
-                  <TableCell className="text-right">
-                    <button
-                      onClick={() => handleToggleActive(tool)}
-                      disabled={togglingTool === tool.id}
-                      className="opacity-80 hover:opacity-100 transition-opacity"
-                    >
-                      {tool.isActive ? (
-                        <ToggleRight className="h-4 w-4 text-success" />
-                      ) : (
-                        <ToggleLeft className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        ))}
       </div>
 
-      {/* Users */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold">Users</h2>
-        <div className="glass rounded-xl overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Email</TableHead>
-                <TableHead className="text-xs">Name</TableHead>
-                <TableHead className="text-xs">Role</TableHead>
-                <TableHead className="text-xs">Joined</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="text-xs font-medium">{user.email}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {user.fullName ?? "—"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className="text-[10px]">{user.role}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {new Date(user.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
+      <Tabs defaultValue="approvals">
+        <TabsList className="h-8">
+          <TabsTrigger value="approvals" className="text-xs">Approvals</TabsTrigger>
+          <TabsTrigger value="tools" className="text-xs">All Tools</TabsTrigger>
+          <TabsTrigger value="users" className="text-xs">Users</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="approvals" className="mt-4">
+          <ToolApprovalManager tools={tools} onToolsChange={setTools} />
+        </TabsContent>
+
+        <TabsContent value="tools" className="mt-4 space-y-3">
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              onClick={() => setShowCreate((v) => !v)}
+            >
+              <Plus className="h-3 w-3" />
+              {showCreate ? "Cancel" : "New Tool"}
+            </Button>
+          </div>
+          {showCreate && (
+            <div className="glass rounded-xl p-4">
+              <ToolCreationForm
+                onCreated={(tool) => {
+                  setTools((prev) => [tool, ...prev]);
+                  setShowCreate(false);
+                }}
+                onCancel={() => setShowCreate(false)}
+              />
+            </div>
+          )}
+          <ToolManagement tools={tools} onToolsChange={setTools} />
+        </TabsContent>
+
+        <TabsContent value="users" className="mt-4">
+          <UserRoleManager users={users} onUsersChange={setUsers} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
