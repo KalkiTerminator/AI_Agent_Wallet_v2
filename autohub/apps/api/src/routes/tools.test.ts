@@ -229,6 +229,7 @@ describe("POST /api/tools/:id/execute", () => {
     expect(ToolExecutionService.execute).toHaveBeenCalledWith({
       toolId: "tool-1",
       userId: "user-1",
+      userRole: "user",
       inputs: { prompt: "hello" },
       ip: undefined,
     });
