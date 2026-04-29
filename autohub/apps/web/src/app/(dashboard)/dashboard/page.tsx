@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useCredits } from "@/hooks/useCredits";
 import { useTools } from "@/hooks/useTools";
@@ -16,12 +16,25 @@ import { Search, CheckCircle, XCircle, X } from "lucide-react";
 import type { AITool } from "@/types";
 import { TOOL_CATEGORIES } from "@autohub/shared";
 
+function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancelled" | null) => void }) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  useEffect(() => {
+    const payment = searchParams.get("payment");
+    if (payment === "success" || payment === "cancelled") {
+      onBanner(payment);
+      router.replace("/dashboard");
+      const timer = setTimeout(() => onBanner(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams, router, onBanner]);
+  return null;
+}
+
 export default function DashboardPage() {
   const { credits } = useCredits();
   const { tools, loading: toolsLoading, favorites, toggleFavorite } = useTools();
   const { queue, isProcessing, addToQueue, processQueue, removeFromQueue, clearCompleted } = useToolQueue();
-  const searchParams = useSearchParams();
-  const router = useRouter();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
@@ -29,17 +42,6 @@ export default function DashboardPage() {
   const [selectedTool, setSelectedTool] = useState<AITool | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [paymentBanner, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
-
-  useEffect(() => {
-    const payment = searchParams.get("payment");
-    if (payment === "success" || payment === "cancelled") {
-      setPaymentBanner(payment);
-      // Strip query param from URL without full reload
-      router.replace("/dashboard");
-      const timer = setTimeout(() => setPaymentBanner(null), 6000);
-      return () => clearTimeout(timer);
-    }
-  }, [searchParams, router]);
 
   const filtered = useMemo(() => {
     let list = tools;
@@ -67,6 +69,9 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-4">
+      <Suspense>
+        <PaymentBannerHandler onBanner={setPaymentBanner} />
+      </Suspense>
       {/* Payment banner */}
       {paymentBanner && (
         <div
