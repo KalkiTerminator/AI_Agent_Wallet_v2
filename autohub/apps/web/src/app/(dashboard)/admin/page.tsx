@@ -1,7 +1,7 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSession } from "next-auth/react";
-import { redirect } from "next/navigation";
+import { useSearchParams, useRouter, redirect } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -19,8 +19,19 @@ interface AdminAnalytics {
   totalRevenueCents: number;
 }
 
-export default function AdminPage() {
+type AdminTab = "users" | "tools" | "approvals";
+
+function AdminPageInner() {
   const { data: session, status } = useSession();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const rawTab = searchParams.get("tab");
+  const activeTab: AdminTab =
+    rawTab === "users" || rawTab === "tools" || rawTab === "approvals"
+      ? rawTab
+      : "approvals";
+
   const [analytics, setAnalytics] = useState<AdminAnalytics | null>(null);
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [tools, setTools] = useState<AITool[]>([]);
@@ -72,6 +83,10 @@ export default function AdminPage() {
     { icon: DollarSign, label: "Revenue", value: `$${((analytics?.totalRevenueCents ?? 0) / 100).toFixed(2)}` },
   ];
 
+  function handleTabChange(tab: string) {
+    router.push(`/admin?tab=${tab}`);
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -93,11 +108,11 @@ export default function AdminPage() {
         ))}
       </div>
 
-      <Tabs defaultValue="approvals">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="h-8">
-          <TabsTrigger value="approvals" className="text-xs">Approvals</TabsTrigger>
-          <TabsTrigger value="tools" className="text-xs">All Tools</TabsTrigger>
-          <TabsTrigger value="users" className="text-xs">Users</TabsTrigger>
+          <TabsTrigger value="approvals" className="text-xs">Tool Approvals</TabsTrigger>
+          <TabsTrigger value="tools" className="text-xs">Manage Tools</TabsTrigger>
+          <TabsTrigger value="users" className="text-xs">User Management</TabsTrigger>
         </TabsList>
 
         <TabsContent value="approvals" className="mt-4">
@@ -135,5 +150,13 @@ export default function AdminPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function AdminPage() {
+  return (
+    <Suspense>
+      <AdminPageInner />
+    </Suspense>
   );
 }

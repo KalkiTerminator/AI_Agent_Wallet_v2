@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, BarChart2, Settings, User, Wrench,
@@ -63,11 +63,20 @@ function NavLink({
 
 export function SidebarClient({ user }: SidebarClientProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
   const isAdmin = user.role === "admin" || user.role === "moderator";
 
-  const isActive = (href: string) =>
-    href === "/dashboard" ? pathname === href : pathname.startsWith(href.split("?")[0]);
+  const isActive = (href: string) => {
+    const [hrefPath, hrefQuery] = href.split("?");
+    if (href === "/dashboard") return pathname === href;
+    if (!pathname.startsWith(hrefPath)) return false;
+    if (!hrefQuery) return true;
+    const params = new URLSearchParams(hrefQuery);
+    const tab = params.get("tab");
+    if (!tab) return true;
+    return searchParams.get("tab") === tab;
+  };
 
   return (
     <aside className="w-56 shrink-0 border-r border-border bg-background flex flex-col h-screen sticky top-0">
