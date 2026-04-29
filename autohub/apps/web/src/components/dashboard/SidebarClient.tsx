@@ -30,14 +30,28 @@ const adminLinks = [
   { href: "/admin?tab=approvals", label: "Tool Approvals", icon: CheckSquare },
 ];
 
-function NavLink({ href, label, icon: Icon, active }: { href: string; label: string; icon: typeof LayoutDashboard; active: boolean }) {
+function NavLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+  variant = "default",
+}: {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  active: boolean;
+  variant?: "default" | "admin";
+}) {
   return (
     <Link
       href={href}
       className={cn(
         "flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors",
         active
-          ? "text-primary font-semibold"
+          ? "bg-primary/10 text-primary font-semibold"
+          : variant === "admin"
+          ? "text-orange-500 hover:text-orange-400 hover:bg-orange-500/10"
           : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
       )}
     >
@@ -93,7 +107,7 @@ export function SidebarClient({ user }: SidebarClientProps) {
             <p className="px-2.5 mb-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Admin</p>
             <div className="space-y-0.5">
               {adminLinks.map(({ href, label, icon }) => (
-                <NavLink key={href} href={href} label={label} icon={icon} active={isActive(href)} />
+                <NavLink key={href} href={href} label={label} icon={icon} active={isActive(href)} variant="admin" />
               ))}
             </div>
           </div>

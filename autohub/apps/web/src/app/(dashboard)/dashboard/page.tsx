@@ -4,7 +4,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCredits } from "@/hooks/useCredits";
 import { useTools } from "@/hooks/useTools";
-import { useSubscription } from "@/hooks/useSubscription";
 import { ToolExecuteDialog } from "@/components/dashboard/ToolExecuteDialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +14,7 @@ import { Search, Play, Zap, Grid3X3, LayoutGrid, List } from "lucide-react";
 import type { AITool } from "@/types";
 import { TOOL_CATEGORIES } from "@autohub/shared";
 
-// ── Payment banner handler (needs Suspense for useSearchParams) ──────────────
+// ── Payment banner handler ────────────────────────────────────────────────────
 function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancelled" | null) => void }) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -31,36 +30,41 @@ function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancell
   return null;
 }
 
-// ── Layout toggle ────────────────────────────────────────────────────────────
 type Layout = "grid" | "comfortable" | "list";
 
 // ── Tool Card ────────────────────────────────────────────────────────────────
 function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onUse: () => void }) {
   const canAfford = credits >= tool.creditCost;
+  const authorDisplay = tool.createdByUserId
+    ? tool.createdByUserId.slice(0, 10)
+    : "autohub";
 
   return (
     <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 hover:border-primary/40 hover:shadow-sm transition-all">
       <div className="flex items-start justify-between">
-        <span className="text-2xl">{tool.iconUrl || "🤖"}</span>
-        <Badge variant="secondary" className="text-[10px] font-mono px-2 py-0.5 rounded-full">
+        <div className="flex-1" />
+        <Badge
+          variant="secondary"
+          className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+        >
           {tool.creditCost} cr
         </Badge>
       </div>
-      <div className="flex-1 space-y-1">
+      <div className="flex-1 space-y-0.5">
         <p className="text-sm font-semibold leading-tight">{tool.name}</p>
-        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">{tool.description}</p>
+        <p className="text-[11px] text-muted-foreground">{authorDisplay}</p>
       </div>
       <div className="flex items-center justify-between">
-        <Badge variant="outline" className="text-[10px] px-2 py-0 h-5 rounded-full">
+        <Badge variant="outline" className="text-[10px] px-2 py-0 h-5 rounded-sm">
           {tool.category}
         </Badge>
         <Button
           size="sm"
           onClick={onUse}
           disabled={!canAfford}
-          className="h-7 text-[11px] px-3 gap-1 rounded-full bg-primary hover:bg-primary/90"
+          className="h-7 text-[11px] px-3 gap-1 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
         >
-          <Play className="h-2.5 w-2.5" />
+          <Play className="h-2.5 w-2.5 fill-current" />
           Quick
         </Button>
       </div>
@@ -69,22 +73,30 @@ function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onU
 }
 
 // ── Account Panel ────────────────────────────────────────────────────────────
-function AccountPanel({ credits, toolCount }: { credits: number | null; toolCount: number }) {
+function AccountPanel({
+  credits,
+  liveCount,
+  soonCount,
+}: {
+  credits: number | null;
+  liveCount: number;
+  soonCount: number;
+}) {
   const MAX_FREE_CREDITS = 100;
   const pct = Math.min(100, ((credits ?? 0) / MAX_FREE_CREDITS) * 100);
 
   return (
-    <div className="w-56 shrink-0 border border-border rounded-xl p-4 space-y-3 h-fit">
+    <div className="border border-border rounded-xl p-4 space-y-3 h-fit bg-card">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold">Account</p>
         <Zap className="h-4 w-4 text-primary" />
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         <div className="flex items-center justify-between text-xs">
           <span className="text-muted-foreground">Credits</span>
-          <span className="font-mono font-semibold">{credits ?? "—"}</span>
+          <span className="font-mono font-semibold text-foreground">{credits ?? "—"}</span>
         </div>
-        <Progress value={pct} className="h-1.5" />
+        <Progress value={pct} className="h-1.5 bg-muted [&>div]:bg-primary" />
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">Plan</span>
@@ -92,10 +104,17 @@ function AccountPanel({ credits, toolCount }: { credits: number | null; toolCoun
       </div>
       <div className="flex items-center justify-between text-xs">
         <span className="text-muted-foreground">Live</span>
-        <span className="font-medium">{toolCount}</span>
+        <span className="font-medium">{liveCount}</span>
       </div>
-      <Button size="sm" className="w-full h-8 text-xs rounded-full bg-primary hover:bg-primary/90 gap-1.5">
-        <span>+</span> Upgrade
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground">Soon</span>
+        <span className="font-medium">{soonCount}</span>
+      </div>
+      <Button
+        size="sm"
+        className="w-full h-8 text-xs rounded-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
+      >
+        + Upgrade
       </Button>
     </div>
   );
@@ -130,6 +149,9 @@ export default function DashboardPage() {
     return list;
   }, [tools, search, category]);
 
+  const liveCount = filtered.length;
+  const soonCount = useMemo(() => Math.max(0, tools.length - filtered.length), [tools, filtered]);
+
   const openTool = (tool: AITool) => {
     setSelectedTool(tool);
     setDialogOpen(true);
@@ -143,17 +165,17 @@ export default function DashboardPage() {
       : "grid-cols-2 md:grid-cols-3 lg:grid-cols-4";
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0 h-full">
       <Suspense>
         <PaymentBannerHandler onBanner={setPaymentBanner} />
       </Suspense>
 
       {/* Main content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-border">
-          <div className="flex-1 text-xs text-muted-foreground">
-            <Zap className="inline h-3.5 w-3.5 mr-1 text-primary" />
+        <div className="flex items-center gap-3 px-6 py-3 border-b border-border shrink-0">
+          <div className="flex-1 text-xs text-muted-foreground flex items-center gap-1">
+            <Zap className="h-3.5 w-3.5 text-primary" />
             {toolsLoading ? "Loading…" : `${filtered.length} tools`}
           </div>
           <div className="flex items-center gap-1 border border-border rounded-lg p-0.5">
@@ -184,7 +206,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="px-6 py-6 space-y-6">
+        <div className="px-6 py-6 space-y-6 flex-1">
           {/* Welcome header */}
           <div>
             <h1 className="text-2xl font-bold">
@@ -196,13 +218,13 @@ export default function DashboardPage() {
           </div>
 
           {/* Search */}
-          <div className="relative max-w-2xl">
+          <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search AI tools..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-10 rounded-xl bg-muted/50 border-border/50"
+              className="pl-10 h-10 rounded-xl bg-muted/40 border-border/60"
             />
           </div>
 
@@ -223,12 +245,12 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Featured Tools section */}
+          {/* Featured Tools */}
           <div>
             <div className="flex items-center gap-2 mb-4">
               <Zap className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Featured Tools</h2>
-              <Badge className="text-[10px] bg-primary/10 text-primary border-primary/20 rounded-full px-2 py-0">
+              <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/30 rounded-full px-2 py-0">
                 Live
               </Badge>
             </div>
@@ -236,7 +258,7 @@ export default function DashboardPage() {
             {toolsLoading ? (
               <div className={`grid gap-4 ${gridClass}`}>
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="h-44 rounded-xl" />
+                  <Skeleton key={i} className="h-36 rounded-xl" />
                 ))}
               </div>
             ) : filtered.length === 0 ? (
@@ -260,8 +282,8 @@ export default function DashboardPage() {
       </div>
 
       {/* Right account panel */}
-      <div className="w-64 shrink-0 border-l border-border p-4 hidden lg:block">
-        <AccountPanel credits={credits} toolCount={filtered.length} />
+      <div className="w-56 shrink-0 border-l border-border p-4 hidden lg:flex flex-col">
+        <AccountPanel credits={credits} liveCount={liveCount} soonCount={soonCount} />
       </div>
 
       <ToolExecuteDialog
