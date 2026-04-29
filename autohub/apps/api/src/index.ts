@@ -14,6 +14,9 @@ import { authRouter } from "./routes/auth.js";
 import { creditsRouter } from "./routes/credits.js";
 import { executionsRouter } from "./routes/executions.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { db } from "./db/index.js";
+import { users, userRoles } from "./db/schema.js";
+import { eq } from "drizzle-orm";
 
 const app = new Hono();
 
@@ -33,6 +36,23 @@ app.use("*", logger());
 app.onError(errorHandler);
 
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+
+// Promote a user to admin by email — protected by SEED_SECRET env var
+app.post("/seed/promote-admin", async (c) => {
+  const secret = process.env.SEED_SECRET;
+  if (!secret) return c.json({ error: "SEED_SECRET not configured" }, 403);
+  const body = await c.req.json<{ secret: string; email: string }>();
+  if (body.secret !== secret) return c.json({ error: "Forbidden" }, 403);
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
+  if (!user) return c.json({ error: "User not found" }, 404);
+  const [updated] = await db
+    .update(userRoles)
+    .set({ role: "admin", isOwner: true })
+    .where(eq(userRoles.userId, user.id))
+    .returning();
+  if (!updated) return c.json({ error: "User role row not found" }, 404);
+  return c.json({ ok: true, userId: user.id, role: updated.role });
+});
 
 app.route("/api/auth", authRouter);
 app.route("/api/tools", toolsRouter);
