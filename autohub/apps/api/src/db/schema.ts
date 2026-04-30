@@ -188,6 +188,13 @@ export const executions = pgTable("executions", {
   index("executions_user_id_idx").on(t.userId),
 ]);
 
+// ─── app_config ─────────────────────────────────────────
+export const appConfig = pgTable("app_config", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ─── password_reset_tokens ──────────────────────────────
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   tokenHash: text("token_hash").primaryKey(),

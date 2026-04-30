@@ -42,7 +42,7 @@ export interface InputField {
 }
 
 // ─── User ───────────────────────────────────────────────
-export type AppRole = "admin" | "moderator" | "user";
+export type AppRole = string;
 
 export interface UserWithRole {
   id: string;
