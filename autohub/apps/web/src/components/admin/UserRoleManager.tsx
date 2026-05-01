@@ -29,6 +29,7 @@ interface Props {
 
 export function UserRoleManager({ users, onUsersChange }: Props) {
   const { data: session } = useSession();
+  const currentUserId = session?.user?.id;
   const [roles, setRoles] = useState<string[]>(BUILT_IN_ROLES);
   const [busy, setBusy] = useState<string | null>(null);
   const [newRole, setNewRole] = useState("");
@@ -162,7 +163,7 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
                   <Select
                     value={user.role}
                     onValueChange={(r) => changeRole(user.id, r)}
-                    disabled={busy === user.id || user.isOwner}
+                    disabled={busy === user.id}
                   >
                     <SelectTrigger className="h-6 text-[10px] w-32">
                       <SelectValue />
@@ -180,7 +181,7 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
                   {new Date(user.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </TableCell>
                 <TableCell className="text-right">
-                  {!user.isOwner && (
+                  {user.id !== currentUserId && (
                     <Button
                       size="sm"
                       variant="outline"
