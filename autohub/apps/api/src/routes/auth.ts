@@ -8,11 +8,14 @@ import { users, userRoles, credits, passwordResetTokens } from "../db/schema.js"
 import { RegisterSchema, LoginSchema } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
+import { logAuditEvent } from "../services/audit.js";
 
 const authRouter = new Hono();
 
 authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   const { email, password, fullName } = c.req.valid("json");
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
 
   const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (existing.length > 0) {
@@ -25,6 +28,8 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   await db.insert(userRoles).values({ userId: user.id, role: "user" });
   await db.insert(credits).values({ userId: user.id, currentCredits: 10 }); // 10 free credits
 
+  await logAuditEvent({ userId: user.id, action: "auth.signup", ip, requestId });
+
   const token = jwt.sign(
     { userId: user.id, email: user.email, role: "user" },
     process.env.NEXTAUTH_SECRET!,
@@ -36,19 +41,25 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
 
 authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   const { email, password } = c.req.valid("json");
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
 
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user) {
+    await logAuditEvent({ action: "auth.login.failure", metadata: { reason: "user_not_found" }, ip, requestId });
     return c.json({ error: "Invalid credentials" }, 401);
   }
 
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) {
+    await logAuditEvent({ userId: user.id, action: "auth.login.failure", metadata: { reason: "wrong_password" }, ip, requestId });
     return c.json({ error: "Invalid credentials" }, 401);
   }
 
   const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, user.id)).limit(1);
   const role = roleRow?.role ?? "user";
+
+  await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
 
   const token = jwt.sign(
     { userId: user.id, email: user.email, role },
@@ -77,7 +88,7 @@ authRouter.patch("/password", requireAuth, async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{ currentPassword: string; newPassword: string }>();
   if (!body.currentPassword || !body.newPassword) return c.json({ error: "Both passwords are required" }, 400);
-  if (body.newPassword.length < 8) return c.json({ error: "New password must be at least 8 characters" }, 400);
+  if (body.newPassword.length < 12) return c.json({ error: "New password must be at least 12 characters" }, 400);
   const [dbUser] = await db.select().from(users).where(eq(users.id, user.userId)).limit(1);
   const valid = await bcrypt.compare(body.currentPassword, dbUser.passwordHash);
   if (!valid) return c.json({ error: "Current password is incorrect" }, 401);
@@ -97,6 +108,9 @@ authRouter.post("/reset/request", async (c) => {
     .where(eq(users.email, body.email.trim().toLowerCase()))
     .limit(1);
 
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
+
   // Always return success to prevent email enumeration
   if (!user) return c.json({ data: { message: "If that email exists, a reset link has been sent." } });
 
@@ -109,8 +123,13 @@ authRouter.post("/reset/request", async (c) => {
 
   await db.insert(passwordResetTokens).values({ tokenHash, userId: user.id, expiresAt });
 
+  await logAuditEvent({ userId: user.id, action: "auth.password_reset.requested", ip, requestId });
+
   const resetUrl = `${process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000"}/auth/reset-password/${token}`;
-  console.log(`[PASSWORD RESET] ${user.email} → ${resetUrl}`);
+  // Do NOT log the reset URL — it contains the raw token. Send via email only.
+  if (process.env.NODE_ENV !== "production") {
+    console.log(`[DEV PASSWORD RESET] ${resetUrl}`);
+  }
 
   return c.json({ data: { message: "If that email exists, a reset link has been sent." } });
 });
@@ -119,7 +138,7 @@ authRouter.post("/reset/request", async (c) => {
 authRouter.post("/reset/confirm", async (c) => {
   const body = await c.req.json<{ token: string; newPassword: string }>();
   if (!body.token || !body.newPassword) return c.json({ error: "token and newPassword are required" }, 400);
-  if (body.newPassword.length < 8) return c.json({ error: "Password must be at least 8 characters" }, 400);
+  if (body.newPassword.length < 12) return c.json({ error: "Password must be at least 12 characters" }, 400);
 
   const now = new Date();
 
@@ -138,6 +157,9 @@ authRouter.post("/reset/confirm", async (c) => {
 
   if (!matched) return c.json({ error: "Invalid or expired reset token" }, 400);
 
+  const ip2 = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId2 = (c.get as any)("requestId");
+
   const newHash = await bcrypt.hash(body.newPassword, 12);
   await db
     .update(users)
@@ -147,6 +169,8 @@ authRouter.post("/reset/confirm", async (c) => {
     .update(passwordResetTokens)
     .set({ usedAt: new Date() })
     .where(eq(passwordResetTokens.tokenHash, matched.tokenHash));
+
+  await logAuditEvent({ userId: matched.userId, action: "auth.password_reset.completed", ip: ip2, requestId: requestId2 });
 
   return c.json({ data: { message: "Password reset successfully." } });
 });

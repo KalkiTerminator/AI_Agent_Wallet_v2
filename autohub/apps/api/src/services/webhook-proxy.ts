@@ -3,6 +3,9 @@ import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { aiTools, executions, credits } from "../db/schema.js";
 import { signPayload } from "./hmac.js";
+import { validateOutboundUrl, SSRFError } from "./url-guard.js";
+import { decrypt } from "./crypto.js";
+import { logAuditEvent } from "./audit.js";
 
 const API_BASE_URL = process.env.AUTOHUB_API_URL ?? "http://localhost:4000";
 
@@ -27,7 +30,17 @@ export class WebhookProxyService {
     if (!tool.isActive || tool.approvalStatus !== "approved") {
       throw Object.assign(new Error("Tool not available"), { status: 400 });
     }
-    if (!tool.webhookUrl) throw Object.assign(new Error("Tool has no webhook configured"), { status: 400 });
+    // Resolve webhook URL — prefer encrypted field, fall back to legacy plain field
+    const rawWebhookUrl = tool.webhookUrlEncrypted
+      ? decrypt(tool.webhookUrlEncrypted)
+      : tool.webhookUrl;
+    if (!rawWebhookUrl) throw Object.assign(new Error("Tool has no webhook configured"), { status: 400 });
+
+    // Resolve optional auth header
+    const authHeader = tool.authHeaderEncrypted ? decrypt(tool.authHeaderEncrypted) : null;
+
+    // Attach resolved values so private methods can use them without re-decrypting
+    const resolvedTool = { ...tool, _resolvedWebhookUrl: rawWebhookUrl, _resolvedAuthHeader: authHeader };
 
     if (!isAdmin) {
       const [creditRow] = await db.select().from(credits).where(eq(credits.userId, userId)).limit(1);
@@ -47,20 +60,47 @@ export class WebhookProxyService {
     }).returning();
 
     if (tool.executionMode === "async") {
-      return this.executeAsync({ tool, execution, inputs, isAdmin });
+      return this.executeAsync({ tool: resolvedTool, execution, inputs, isAdmin });
     }
-    return this.executeSync({ tool, execution, inputs, isAdmin });
+    return this.executeSync({ tool: resolvedTool, execution, inputs, isAdmin });
   }
 
   private static async executeSync({ tool, execution, inputs, isAdmin }: {
-    tool: typeof aiTools.$inferSelect;
+    tool: typeof aiTools.$inferSelect & { _resolvedWebhookUrl: string; _resolvedAuthHeader: string | null };
     execution: typeof executions.$inferSelect;
     inputs: Record<string, unknown>;
     isAdmin: boolean;
   }) {
+    const webhookUrl = tool._resolvedWebhookUrl;
+
+    // SSRF guard: validate + pin resolved IP on every call to defeat DNS rebinding
+    let resolvedIp: string;
+    try {
+      ({ resolvedIp } = await validateOutboundUrl(webhookUrl));
+    } catch (err) {
+      if (err instanceof SSRFError) {
+        await db.update(executions)
+          .set({ status: "failed", error: `SSRF blocked: ${err.message}`, completedAt: new Date() })
+          .where(eq(executions.id, execution.id));
+        return { executionId: execution.id, status: "failed" as const, error: err.message };
+      }
+      throw err;
+    }
+
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const body = JSON.stringify({ executionId: execution.id, inputs });
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-AutoHub-Resolved-IP": resolvedIp,
+    };
+
+    // Attach creator-provided auth header (decrypted, never logged)
+    if (tool._resolvedAuthHeader) {
+      const [headerName, ...rest] = tool._resolvedAuthHeader.split(":");
+      if (headerName && rest.length) {
+        headers[headerName.trim()] = rest.join(":").trim();
+      }
+    }
 
     if (tool.signingSecretHash) {
       const sig = signPayload(tool.signingSecretHash, timestamp, execution.id, body);
@@ -68,12 +108,14 @@ export class WebhookProxyService {
       headers["X-AutoHub-Signature"] = sig;
     }
 
+    // Hard platform cap: 60s regardless of tool configuration
+    const PLATFORM_TIMEOUT_MS = 60_000;
     const controller = new AbortController();
-    const timeoutMs = (tool.webhookTimeout ?? 30) * 1000;
+    const timeoutMs = Math.min((tool.webhookTimeout ?? 30) * 1000, PLATFORM_TIMEOUT_MS);
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(tool.webhookUrl!, {
+      const res = await fetch(webhookUrl, {
         method: "POST",
         headers,
         body,
@@ -87,7 +129,16 @@ export class WebhookProxyService {
         return { executionId: execution.id, status: "failed" as const, error: `Webhook returned ${res.status}` };
       }
 
-      const responsePayload = await res.json().catch(() => null);
+      // Cap response body at 1MB to prevent memory exhaustion
+      const MAX_RESPONSE_BYTES = 1_048_576;
+      const buffer = await res.arrayBuffer();
+      if (buffer.byteLength > MAX_RESPONSE_BYTES) {
+        await db.update(executions)
+          .set({ status: "failed", error: "Webhook response exceeded 1MB limit", completedAt: new Date() })
+          .where(eq(executions.id, execution.id));
+        return { executionId: execution.id, status: "failed" as const, error: "Response too large" };
+      }
+      const responsePayload = JSON.parse(new TextDecoder().decode(buffer));
       const creditsDebited = isAdmin ? 0 : tool.creditCost;
 
       if (!isAdmin) {
@@ -99,6 +150,14 @@ export class WebhookProxyService {
       await db.update(executions)
         .set({ status: "success", responsePayload, creditsDebited, completedAt: new Date() })
         .where(eq(executions.id, execution.id));
+
+      await logAuditEvent({
+        userId: execution.userId,
+        action: "tool.executed",
+        resourceType: "tool",
+        resourceId: execution.toolId,
+        metadata: { executionId: execution.id, creditsDebited, status: "success" },
+      });
 
       return { executionId: execution.id, status: "success" as const, output: responsePayload, creditsDebited };
     } catch (err) {
@@ -112,15 +171,37 @@ export class WebhookProxyService {
   }
 
   private static async executeAsync({ tool, execution, inputs, isAdmin }: {
-    tool: typeof aiTools.$inferSelect;
+    tool: typeof aiTools.$inferSelect & { _resolvedWebhookUrl: string; _resolvedAuthHeader: string | null };
     execution: typeof executions.$inferSelect;
     inputs: Record<string, unknown>;
     isAdmin: boolean;
   }) {
+    const webhookUrl = tool._resolvedWebhookUrl;
+
+    // SSRF guard on every call to defeat DNS rebinding
+    try {
+      await validateOutboundUrl(webhookUrl);
+    } catch (err) {
+      if (err instanceof SSRFError) {
+        await db.update(executions)
+          .set({ status: "failed", error: `SSRF blocked: ${err.message}`, completedAt: new Date() })
+          .where(eq(executions.id, execution.id));
+        return { executionId: execution.id, status: "failed" as const, error: err.message };
+      }
+      throw err;
+    }
+
     const callbackUrl = `${API_BASE_URL}/api/executions/${execution.id}/callback`;
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const body = JSON.stringify({ executionId: execution.id, inputs, callbackUrl });
     const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+    if (tool._resolvedAuthHeader) {
+      const [headerName, ...rest] = tool._resolvedAuthHeader.split(":");
+      if (headerName && rest.length) {
+        headers[headerName.trim()] = rest.join(":").trim();
+      }
+    }
 
     if (tool.signingSecretHash) {
       const sig = signPayload(tool.signingSecretHash, timestamp, execution.id, body);
@@ -128,8 +209,8 @@ export class WebhookProxyService {
       headers["X-AutoHub-Signature"] = sig;
     }
 
-    // Fire and forget
-    fetch(tool.webhookUrl!, { method: "POST", headers, body }).catch(() => {
+    // Fire and forget — credits deducted by callback handler on success
+    fetch(webhookUrl, { method: "POST", headers, body }).catch(() => {
       db.update(executions)
         .set({ status: "failed", error: "Failed to reach webhook", completedAt: new Date() })
         .where(eq(executions.id, execution.id));

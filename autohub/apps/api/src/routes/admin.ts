@@ -6,6 +6,7 @@ import { requireAdmin } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { eq, sql, desc } from "drizzle-orm";
+import { logAuditEvent } from "../services/audit.js";
 
 const DEFAULT_ROLES = ["admin", "moderator", "user"];
 const ROLES_CONFIG_KEY = "custom_roles";
@@ -72,6 +73,7 @@ adminRouter.get("/tools", rateLimit(RATE_LIMITS.READS), async (c) => {
 
 adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
+  const actor = c.get("user");
   const body = await c.req.json<{
     approvalStatus?: "pending" | "approved" | "rejected";
     isActive?: boolean;
@@ -92,6 +94,20 @@ adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
     .returning();
 
   if (!updated) return c.json({ error: "Tool not found" }, 404);
+
+  if (body.approvalStatus) {
+    const action = body.approvalStatus === "approved" ? "admin.tool.approved" : "admin.tool.rejected";
+    await logAuditEvent({
+      userId: actor.userId,
+      action,
+      resourceType: "tool",
+      resourceId: id,
+      metadata: { approvalStatus: body.approvalStatus },
+      ip: c.req.header("x-forwarded-for") ?? null,
+      requestId: (c.get as any)("requestId"),
+    });
+  }
+
   return c.json({ data: updated });
 });
 
@@ -133,6 +149,7 @@ adminRouter.delete("/roles/:role", rateLimit(RATE_LIMITS.READS), async (c) => {
 // PATCH /api/admin/users/:id/role — change user role
 adminRouter.patch("/users/:id/role", rateLimit(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
+  const actor = c.get("user");
   const body = await c.req.json<{ role: string }>();
   const roles = await getRoles();
   if (!roles.includes(body.role)) {
@@ -144,18 +161,36 @@ adminRouter.patch("/users/:id/role", rateLimit(RATE_LIMITS.READS), async (c) => 
     .where(eq(userRoles.userId, id))
     .returning();
   if (!updated) return c.json({ error: "User not found" }, 404);
+  await logAuditEvent({
+    userId: actor.userId,
+    action: "admin.user.role_changed",
+    resourceType: "user",
+    resourceId: id,
+    metadata: { newRole: body.role },
+    ip: c.req.header("x-forwarded-for") ?? null,
+    requestId: (c.get as any)("requestId"),
+  });
   return c.json({ data: updated });
 });
 
 // DELETE /api/admin/users/:id — soft-deactivate user
 adminRouter.delete("/users/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
+  const actor = c.get("user");
   const [updated] = await db
     .update(users)
     .set({ isActive: false })
     .where(eq(users.id, id))
     .returning({ id: users.id, isActive: users.isActive });
   if (!updated) return c.json({ error: "User not found" }, 404);
+  await logAuditEvent({
+    userId: actor.userId,
+    action: "admin.user.deactivated",
+    resourceType: "user",
+    resourceId: id,
+    ip: c.req.header("x-forwarded-for") ?? null,
+    requestId: (c.get as any)("requestId"),
+  });
   return c.json({ data: updated });
 });
 

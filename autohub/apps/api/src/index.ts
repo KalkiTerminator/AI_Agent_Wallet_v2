@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { randomUUID } from "crypto";
 import { toolsRouter } from "./routes/tools.js";
 import { paymentsRouter } from "./routes/payments.js";
 import { subscriptionsRouter } from "./routes/subscriptions.js";
@@ -14,6 +15,7 @@ import { authRouter } from "./routes/auth.js";
 import { creditsRouter } from "./routes/credits.js";
 import { executionsRouter } from "./routes/executions.js";
 import { errorHandler } from "./middleware/error-handler.js";
+import { securityHeaders } from "./middleware/security-headers.js";
 import { db } from "./db/index.js";
 import { users, userRoles } from "./db/schema.js";
 import { eq } from "drizzle-orm";
@@ -33,26 +35,39 @@ app.use(
 );
 
 app.use("*", logger());
+app.use("*", securityHeaders());
+
+// Inject requestId into every request context for audit trail correlation
+app.use("*", async (c, next) => {
+  c.set("requestId" as any, randomUUID());
+  await next();
+});
+
 app.onError(errorHandler);
 
 app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-// Promote a user to admin by email — protected by SEED_SECRET env var
-app.post("/seed/promote-admin", async (c) => {
-  const secret = process.env.SEED_SECRET;
-  if (!secret) return c.json({ error: "SEED_SECRET not configured" }, 403);
-  const body = await c.req.json<{ secret: string; email: string }>();
-  if (body.secret !== secret) return c.json({ error: "Forbidden" }, 403);
-  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
-  if (!user) return c.json({ error: "User not found" }, 404);
-  const [updated] = await db
-    .update(userRoles)
-    .set({ role: "admin", isOwner: true })
-    .where(eq(userRoles.userId, user.id))
-    .returning();
-  if (!updated) return c.json({ error: "User role row not found" }, 404);
-  return c.json({ ok: true, userId: user.id, role: updated.role });
-});
+// Promote a user to admin by email.
+// DISABLED in production — use scripts/promote-admin.ts (direct DB access) instead.
+if (process.env.NODE_ENV !== "production") {
+  app.post("/seed/promote-admin", async (c) => {
+    const secret = process.env.SEED_SECRET;
+    if (!secret) return c.json({ error: "SEED_SECRET not configured" }, 403);
+    // Require both env secret AND a matching X-Seed-Token header
+    const headerToken = c.req.header("X-Seed-Token");
+    if (!headerToken || headerToken !== secret) return c.json({ error: "Forbidden" }, 403);
+    const body = await c.req.json<{ email: string }>();
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, body.email));
+    if (!user) return c.json({ error: "User not found" }, 404);
+    const [updated] = await db
+      .update(userRoles)
+      .set({ role: "admin", isOwner: true })
+      .where(eq(userRoles.userId, user.id))
+      .returning();
+    if (!updated) return c.json({ error: "User role row not found" }, 404);
+    return c.json({ ok: true, userId: user.id, role: updated.role });
+  });
+}
 
 app.route("/api/auth", authRouter);
 app.route("/api/tools", toolsRouter);

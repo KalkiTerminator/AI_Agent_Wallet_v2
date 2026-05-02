@@ -47,7 +47,9 @@ export const aiTools = pgTable("ai_tools", {
   creditCost: integer("credit_cost").notNull().default(1),
   inputFields: jsonb("input_fields").notNull().default([]),
   iconUrl: text("icon_url"),
-  webhookUrl: text("webhook_url"),
+  webhookUrl: text("webhook_url"), // kept for migration; new rows use webhookUrlEncrypted
+  webhookUrlEncrypted: text("webhook_url_encrypted"),
+  authHeaderEncrypted: text("auth_header_encrypted"), // e.g. "Authorization: Bearer xyz"
   hasWebhook: boolean("has_webhook").notNull().default(false),
   outputType: text("output_type").default("smart"),
   approvalStatus: text("approval_status", { enum: ["pending", "approved", "rejected"] }).notNull().default("pending"),

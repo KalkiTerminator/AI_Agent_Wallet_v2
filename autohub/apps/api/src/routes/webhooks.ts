@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { payments, subscriptions, credits, users } from "../db/schema.js";
+import { logAuditEvent } from "../services/audit.js";
 
 const webhooksRouter = new Hono();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
@@ -36,6 +37,13 @@ webhooksRouter.post("/stripe", async (c) => {
           });
           // Atomic credit increment
           await db.execute(sql`UPDATE credits SET current_credits = current_credits + ${Number(creditAmount)} WHERE user_id = ${userId}`);
+          await logAuditEvent({
+            userId,
+            action: "payment.completed",
+            resourceType: "payment",
+            resourceId: session.id,
+            metadata: { credits: creditAmount, amountCents: session.amount_total },
+          });
         }
       }
       break;

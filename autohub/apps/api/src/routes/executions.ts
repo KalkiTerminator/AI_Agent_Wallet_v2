@@ -19,10 +19,23 @@ executionsRouter.get("/:id", requireAuth, async (c) => {
   return c.json({ data: execution });
 });
 
-// POST /api/executions/:id/callback — n8n posts result here
+// POST /api/executions/:id/callback — n8n/Zapier posts result here when async tool completes.
+//
+// Credit deduction invariant (async tools):
+//   - Credits are NOT deducted at fire-time (executeAsync returns immediately with status=pending)
+//   - Credits are deducted HERE on success callback only
+//   - On failure callback or fire error: execution stays failed, 0 credits deducted (no refund needed)
+//   - Idempotency: if execution is already terminal (success/failed/timeout), callback is ignored
+//   - Leak prevention: executions stuck in `pending` are expired by a periodic job (TODO: add cleanup cron)
 executionsRouter.post("/:id/callback", async (c) => {
   const { id } = c.req.param();
+
+  // Cap callback body at 1MB to prevent memory exhaustion from malicious n8n payloads
+  const MAX_BODY_BYTES = 1_048_576;
   const rawBody = await c.req.text();
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
+    return c.json({ error: "Callback payload too large" }, 413);
+  }
   const timestamp = c.req.header("x-autohub-timestamp") ?? "";
   const signature = c.req.header("x-autohub-signature") ?? "";
 

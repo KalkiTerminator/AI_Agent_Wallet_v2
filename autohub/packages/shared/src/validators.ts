@@ -5,9 +5,41 @@ export const ToolExecutionSchema = z.object({
   inputs: z.record(z.unknown()),
 });
 
+// Common passwords that are easy to guess — block them at registration
+const COMMON_PASSWORDS = new Set([
+  "password", "password1", "password123", "123456789", "12345678", "1234567890",
+  "qwerty123", "qwertyuiop", "iloveyou", "admin1234", "welcome1", "monkey123",
+  "dragon123", "master123", "letmein1", "sunshine1", "princess1", "football1",
+  "shadow123", "michael1", "superman1", "baseball1", "jordan123", "harley123",
+  "ranger123", "daniel123", "passw0rd", "p@ssword", "p@ssw0rd", "changeme",
+  "trustno1", "abc123456", "123abc456", "password!", "hello123!", "welcome!",
+]);
+
+function isStrongPassword(password: string): true | string {
+  if (password.length < 12) return "Password must be at least 12 characters";
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) return "Password is too common";
+
+  // Require at least 3 of 4 character classes
+  const hasLower = /[a-z]/.test(password);
+  const hasUpper = /[A-Z]/.test(password);
+  const hasDigit = /[0-9]/.test(password);
+  const hasSymbol = /[^a-zA-Z0-9]/.test(password);
+  const classCount = [hasLower, hasUpper, hasDigit, hasSymbol].filter(Boolean).length;
+
+  if (classCount < 3) {
+    return "Password must contain at least 3 of: lowercase, uppercase, number, special character";
+  }
+  return true;
+}
+
 export const RegisterSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string().superRefine((val, ctx) => {
+    const result = isStrongPassword(val);
+    if (result !== true) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: result });
+    }
+  }),
   fullName: z.string().min(1, "Name is required").optional(),
 });
 

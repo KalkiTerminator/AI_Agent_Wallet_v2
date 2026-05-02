@@ -7,8 +7,20 @@ import { requireRole } from "../middleware/rbac.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
+import { validateOutboundUrl, SSRFError } from "../services/url-guard.js";
+import { encrypt, maskUrl } from "../services/crypto.js";
 
 const toolsRouter = new Hono();
+
+function sanitizeToolForClient(tool: typeof aiTools.$inferSelect) {
+  return {
+    ...tool,
+    webhookUrl: undefined,
+    webhookUrlEncrypted: undefined,
+    authHeaderEncrypted: undefined,
+    hasAuthHeader: !!tool.authHeaderEncrypted,
+  };
+}
 
 // GET /api/tools — list approved active tools
 toolsRouter.get("/", rateLimit(RATE_LIMITS.READS), async (c) => {
@@ -16,7 +28,7 @@ toolsRouter.get("/", rateLimit(RATE_LIMITS.READS), async (c) => {
     .select()
     .from(aiTools)
     .where(and(eq(aiTools.isActive, true), eq(aiTools.approvalStatus, "approved")));
-  return c.json({ data: tools });
+  return c.json({ data: tools.map(sanitizeToolForClient) });
 });
 
 // GET /api/tools/mine — tools created by current user
@@ -60,6 +72,7 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
     inputFields?: unknown[];
     iconUrl?: string;
     webhookUrl?: string;
+    authHeader?: string; // e.g. "Authorization: Bearer xyz" — stored encrypted
     outputType?: string;
     webhookTimeout?: number;
     webhookRetries?: number;
@@ -68,6 +81,21 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
   if (!body.name?.trim()) return c.json({ error: "name is required" }, 400);
   if (!body.description?.trim()) return c.json({ error: "description is required" }, 400);
   if (!body.category?.trim()) return c.json({ error: "category is required" }, 400);
+
+  // Validate webhook URL for SSRF before storing
+  if (body.webhookUrl) {
+    try {
+      await validateOutboundUrl(body.webhookUrl);
+    } catch (err) {
+      if (err instanceof SSRFError) {
+        return c.json({ error: `Invalid webhook URL: ${err.message}` }, 400);
+      }
+      return c.json({ error: "Webhook URL validation failed" }, 400);
+    }
+  }
+
+  const webhookUrlEncrypted = body.webhookUrl ? encrypt(body.webhookUrl) : null;
+  const authHeaderEncrypted = body.authHeader ? encrypt(body.authHeader) : null;
 
   const [tool] = await db
     .insert(aiTools)
@@ -78,7 +106,9 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
       creditCost: body.creditCost ?? 1,
       inputFields: body.inputFields ?? [],
       iconUrl: body.iconUrl ?? null,
-      webhookUrl: body.webhookUrl ?? null,
+      webhookUrl: null, // no longer store plain text
+      webhookUrlEncrypted,
+      authHeaderEncrypted,
       hasWebhook: !!body.webhookUrl,
       outputType: body.outputType ?? "smart",
       webhookTimeout: body.webhookTimeout ?? 30,
@@ -89,7 +119,17 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
     })
     .returning();
 
-  return c.json({ data: tool }, 201);
+  // Return masked URL — never return plaintext or encrypted blob to client
+  const safeData = {
+    ...tool,
+    webhookUrlEncrypted: undefined,
+    authHeaderEncrypted: undefined,
+    webhookUrl: undefined,
+    webhookUrlMasked: body.webhookUrl ? maskUrl(body.webhookUrl) : null,
+    hasAuthHeader: !!body.authHeader,
+  };
+
+  return c.json({ data: safeData }, 201);
 });
 
 // PATCH /api/tools/:id/submit — moderator submits draft for approval
@@ -197,7 +237,7 @@ toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");
   const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
-  return c.json({ data: tool });
+  return c.json({ data: sanitizeToolForClient(tool) });
 });
 
 // POST /api/tools/:id/execute — two-phase commit execution
