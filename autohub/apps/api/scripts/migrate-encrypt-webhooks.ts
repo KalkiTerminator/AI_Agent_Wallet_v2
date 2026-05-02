@@ -44,11 +44,6 @@ async function main() {
     }
 
     const encrypted = encrypt(row.webhookUrl);
-    await db.execute(
-      // Raw SQL for safety since Drizzle .update chaining can't easily set null
-      /* sql */ `UPDATE ai_tools SET webhook_url_encrypted = $1, webhook_url = NULL WHERE id = $2` as any
-    );
-    // Use pg pool directly for clarity
     await pool.query(
       "UPDATE ai_tools SET webhook_url_encrypted = $1, webhook_url = NULL WHERE id = $2",
       [encrypted, row.id]
