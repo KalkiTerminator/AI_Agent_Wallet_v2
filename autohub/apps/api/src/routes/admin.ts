@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
-import { eq, sql, desc, isNull } from "drizzle-orm";
+import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { logAuditEvent } from "../services/audit.js";
 
 const DEFAULT_ROLES = ["admin", "moderator", "user"];
@@ -41,7 +41,7 @@ adminRouter.get("/users", rateLimit(RATE_LIMITS.READS), async (c) => {
 
 adminRouter.get("/analytics", rateLimit(RATE_LIMITS.READS), async (c) => {
   const [usageCount] = await db.select({ count: sql<number>`count(*)` }).from(toolUsages);
-  const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
+  const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt));
   const [revenue] = await db.select({ total: sql<number>`sum(amount)` }).from(payments).where(eq(payments.status, "completed"));
 
   return c.json({
@@ -92,7 +92,7 @@ adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const [updated] = await db
     .update(aiTools)
     .set(updates)
-    .where(eq(aiTools.id, id))
+    .where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)))
     .returning();
 
   if (!updated) return c.json({ error: "Tool not found" }, 404);

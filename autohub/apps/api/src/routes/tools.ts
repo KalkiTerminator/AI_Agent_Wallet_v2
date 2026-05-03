@@ -148,7 +148,7 @@ toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c
   const [updated] = await db
     .update(aiTools)
     .set({ toolStatus: "pending_approval", rejectionReason: null, updatedAt: new Date() })
-    .where(eq(aiTools.id, id))
+    .where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)))
     .returning();
   return c.json({ data: updated });
 });
@@ -177,7 +177,7 @@ toolsRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (c) =>
   if (body.status === "archived") {
     updates.isActive = false;
   }
-  const [updated] = await db.update(aiTools).set(updates).where(eq(aiTools.id, id)).returning();
+  const [updated] = await db.update(aiTools).set(updates).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).returning();
   if (!updated) return c.json({ error: "Tool not found" }, 404);
   return c.json({ data: updated });
 });
@@ -201,7 +201,7 @@ toolsRouter.patch("/:id/visibility", requireAuth, requireRole("moderator"), asyn
     updates.approvalStatus = "pending";
     updates.isActive = false;
   }
-  const [updated] = await db.update(aiTools).set(updates).where(eq(aiTools.id, id)).returning();
+  const [updated] = await db.update(aiTools).set(updates).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).returning();
   return c.json({ data: updated });
 });
 

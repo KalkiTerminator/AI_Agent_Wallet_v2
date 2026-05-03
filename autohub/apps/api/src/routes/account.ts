@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
-  users, aiTools, executions, toolUsages, payments, sessions,
+  users, aiTools, executions, toolUsages, payments,
 } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
@@ -56,6 +56,15 @@ accountRouter.delete("/", requireAuth, async (c) => {
   const requestId = (c.get as any)("requestId");
 
   const now = new Date();
+
+  const [existing] = await db
+    .select({ deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, user.userId))
+    .limit(1);
+  if (!existing || existing.deletedAt !== null) {
+    return c.json({ error: "Account not found or already deleted" }, 404);
+  }
 
   await db.update(users).set({
     deletedAt: now,
