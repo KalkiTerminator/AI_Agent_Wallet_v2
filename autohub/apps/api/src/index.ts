@@ -14,6 +14,7 @@ import { webhooksRouter } from "./routes/webhooks.js";
 import { authRouter } from "./routes/auth.js";
 import { creditsRouter } from "./routes/credits.js";
 import { executionsRouter } from "./routes/executions.js";
+import { accountRouter } from "./routes/account.js";
 import { errorHandler } from "./middleware/error-handler.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { db } from "./db/index.js";
@@ -77,6 +78,7 @@ app.route("/api/admin", adminRouter);
 app.route("/api/webhooks", webhooksRouter);
 app.route("/api/credits", creditsRouter);
 app.route("/api/executions", executionsRouter);
+app.route("/api/account", accountRouter);
 
 const port = Number(process.env.PORT ?? 4000);
 console.log(`AutoHub API running on http://localhost:${port}`);

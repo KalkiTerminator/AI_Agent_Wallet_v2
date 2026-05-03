@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import Stripe from "stripe";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { payments, subscriptions, credits, users } from "../db/schema.js";
 import { logAuditEvent } from "../services/audit.js";
@@ -52,7 +52,7 @@ webhooksRouter.post("/stripe", async (c) => {
     case "customer.subscription.updated":
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
-      const [userRow] = await db.select().from(users).where(eq(users.stripeCustomerId, sub.customer as string)).limit(1);
+      const [userRow] = await db.select().from(users).where(and(eq(users.stripeCustomerId, sub.customer as string), isNull(users.deletedAt))).limit(1);
       if (userRow) {
         await db
           .insert(subscriptions)

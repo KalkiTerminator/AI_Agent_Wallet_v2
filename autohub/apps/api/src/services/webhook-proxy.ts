@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "crypto";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { aiTools, executions, credits } from "../db/schema.js";
 import { signPayload } from "./hmac.js";
@@ -25,7 +25,7 @@ export class WebhookProxyService {
   static async execute({ toolId, userId, userRole, inputs }: ProxyParams) {
     const isAdmin = userRole === "admin";
 
-    const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, toolId)).limit(1);
+    const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, toolId), isNull(aiTools.deletedAt))).limit(1);
     if (!tool) throw Object.assign(new Error("Tool not found"), { status: 404 });
     if (!tool.isActive || tool.approvalStatus !== "approved") {
       throw Object.assign(new Error("Tool not available"), { status: 400 });

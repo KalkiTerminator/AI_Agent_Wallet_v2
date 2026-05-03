@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { executions, aiTools, credits, userRoles } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -11,7 +11,7 @@ const executionsRouter = new Hono();
 executionsRouter.get("/:id", requireAuth, async (c) => {
   const user = c.get("user");
   const { id } = c.req.param();
-  const [execution] = await db.select().from(executions).where(eq(executions.id, id)).limit(1);
+  const [execution] = await db.select().from(executions).where(and(eq(executions.id, id), isNull(executions.deletedAt))).limit(1);
   if (!execution) return c.json({ error: "Not found" }, 404);
   if (execution.userId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
@@ -39,7 +39,7 @@ executionsRouter.post("/:id/callback", async (c) => {
   const timestamp = c.req.header("x-autohub-timestamp") ?? "";
   const signature = c.req.header("x-autohub-signature") ?? "";
 
-  const [execution] = await db.select().from(executions).where(eq(executions.id, id)).limit(1);
+  const [execution] = await db.select().from(executions).where(and(eq(executions.id, id), isNull(executions.deletedAt))).limit(1);
   if (!execution) return c.json({ error: "Not found" }, 404);
 
   // Idempotent: already terminal

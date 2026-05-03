@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { aiTools, toolUsages, toolAccess } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -28,14 +28,14 @@ toolsRouter.get("/", rateLimit(RATE_LIMITS.READS), async (c) => {
   const tools = await db
     .select()
     .from(aiTools)
-    .where(and(eq(aiTools.isActive, true), eq(aiTools.approvalStatus, "approved")));
+    .where(and(eq(aiTools.isActive, true), eq(aiTools.approvalStatus, "approved"), isNull(aiTools.deletedAt)));
   return c.json({ data: tools.map(sanitizeToolForClient) });
 });
 
 // GET /api/tools/mine — tools created by current user
 toolsRouter.get("/mine", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
-  const tools = await db.select().from(aiTools).where(eq(aiTools.createdByUserId, user.userId));
+  const tools = await db.select().from(aiTools).where(and(eq(aiTools.createdByUserId, user.userId), isNull(aiTools.deletedAt)));
   return c.json({ data: tools });
 });
 
@@ -49,7 +49,7 @@ toolsRouter.get("/usage", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) =
   const rows = await db
     .select()
     .from(toolUsages)
-    .where(eq(toolUsages.userId, user.userId))
+    .where(and(eq(toolUsages.userId, user.userId), isNull(toolUsages.deletedAt)))
     .orderBy(desc(toolUsages.createdAt))
     .limit(limit)
     .offset(offset);
@@ -57,7 +57,7 @@ toolsRouter.get("/usage", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) =
   const [{ total }] = await db
     .select({ total: count() })
     .from(toolUsages)
-    .where(eq(toolUsages.userId, user.userId));
+    .where(and(eq(toolUsages.userId, user.userId), isNull(toolUsages.deletedAt)));
 
   return c.json({ data: rows, meta: { page, limit, total: Number(total) } });
 });
@@ -137,7 +137,7 @@ toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
 toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c) => {
   const user = c.get("user");
   const { id } = c.req.param();
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
   if (tool.createdByUserId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
@@ -190,7 +190,7 @@ toolsRouter.patch("/:id/visibility", requireAuth, requireRole("moderator"), asyn
   if (!["private", "public"].includes(body.visibility)) {
     return c.json({ error: "Invalid visibility" }, 400);
   }
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
   if (tool.createdByUserId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
@@ -211,7 +211,7 @@ toolsRouter.post("/:id/access", requireAuth, requireRole("moderator"), async (c)
   const { id } = c.req.param();
   const body = await c.req.json<{ userId: string }>();
   if (!body.userId) return c.json({ error: "userId is required" }, 400);
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
   if (tool.createdByUserId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
@@ -224,7 +224,7 @@ toolsRouter.post("/:id/access", requireAuth, requireRole("moderator"), async (c)
 toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"), async (c) => {
   const user = c.get("user");
   const { id, userId } = c.req.param();
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
   if (tool.createdByUserId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
@@ -236,7 +236,7 @@ toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"),
 // GET /api/tools/:id
 toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");
-  const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, id)).limit(1);
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
   return c.json({ data: sanitizeToolForClient(tool) });
 });

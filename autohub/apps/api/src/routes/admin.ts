@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
-import { eq, sql, desc } from "drizzle-orm";
+import { eq, sql, desc, isNull } from "drizzle-orm";
 import { logAuditEvent } from "../services/audit.js";
 
 const DEFAULT_ROLES = ["admin", "moderator", "user"];
@@ -33,7 +33,8 @@ adminRouter.get("/users", rateLimit(RATE_LIMITS.READS), async (c) => {
       isOwner: userRoles.isOwner,
     })
     .from(users)
-    .leftJoin(userRoles, eq(userRoles.userId, users.id));
+    .leftJoin(userRoles, eq(userRoles.userId, users.id))
+    .where(isNull(users.deletedAt));
 
   return c.json({ data: result });
 });
@@ -66,6 +67,7 @@ adminRouter.get("/tools", rateLimit(RATE_LIMITS.READS), async (c) => {
       createdAt: aiTools.createdAt,
     })
     .from(aiTools)
+    .where(isNull(aiTools.deletedAt))
     .orderBy(desc(aiTools.createdAt));
 
   return c.json({ data: result });
