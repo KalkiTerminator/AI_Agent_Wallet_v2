@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHmac } from "crypto";
 import { eq, isNull, and } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens } from "../db/schema.js";
+import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions } from "../db/schema.js";
 import { RegisterSchema, LoginSchema } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
@@ -35,18 +35,26 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
 
   await logAuditEvent({ userId: user.id, action: "auth.signup", ip, requestId });
 
+  const jti = randomUUID();
   const token = jwt.sign(
     {
       userId: user.id,
       email: user.email,
       role: "user",
-      jti: randomUUID(),
+      jti,
       emailVerified: false,
       mfaEnabled: false,
     },
     process.env.NEXTAUTH_SECRET!,
     { expiresIn: "1d" }
   );
+
+  await db.insert(sessions).values({
+    userId: user.id,
+    tokenJti: jti,
+    userAgent: c.req.header("user-agent") ?? null,
+    ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
+  }).catch(() => {}); // non-fatal
 
   // Send email verification
   const rawVerifyToken = randomBytes(32).toString("hex");
@@ -90,18 +98,26 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
 
   await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
 
+  const jti = randomUUID();
   const token = jwt.sign(
     {
       userId: user.id,
       email: user.email,
       role,
-      jti: randomUUID(),
+      jti,
       emailVerified: !!user.emailVerifiedAt,
       mfaEnabled: user.mfaEnabled ?? false,
     },
     process.env.NEXTAUTH_SECRET!,
     { expiresIn: "1d" }
   );
+
+  await db.insert(sessions).values({
+    userId: user.id,
+    tokenJti: jti,
+    userAgent: c.req.header("user-agent") ?? null,
+    ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
+  }).catch(() => {}); // non-fatal
 
   return c.json({
     token,
@@ -134,6 +150,7 @@ authRouter.patch("/password", requireAuth, async (c) => {
   if (!valid) return c.json({ error: "Current password is incorrect" }, 401);
   const newHash = await bcrypt.hash(body.newPassword, 12);
   await db.update(users).set({ passwordHash: newHash }).where(eq(users.id, user.userId));
+  await revokeAllSessions(user.userId);
   return c.json({ data: { success: true } });
 });
 
@@ -286,6 +303,50 @@ authRouter.post("/resend-verification", requireAuth, async (c) => {
   await logAuditEvent({ userId: dbUser.id, action: "auth.verification_resent", ip, requestId });
 
   return c.json({ data: { message: "Verification email sent" } });
+});
+
+export async function revokeAllSessions(userId: string): Promise<void> {
+  await db
+    .update(sessions)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+}
+
+// GET /auth/sessions — list active sessions for current user
+authRouter.get("/sessions", requireAuth, async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.userId, user.userId), isNull(sessions.revokedAt)));
+  return c.json({ data: rows.map((s) => ({
+    id: s.id,
+    createdAt: s.createdAt,
+    userAgent: s.userAgent,
+    ip: s.ip,
+    current: s.tokenJti === user.jti,
+  })) });
+});
+
+// DELETE /auth/sessions — revoke ALL sessions for current user (must be before /:id)
+authRouter.delete("/sessions", requireAuth, async (c) => {
+  const user = c.get("user");
+  await revokeAllSessions(user.userId);
+  return c.json({ data: { revoked: true } });
+});
+
+// DELETE /auth/sessions/:id — revoke a specific session
+authRouter.delete("/sessions/:id", requireAuth, async (c) => {
+  const user = c.get("user");
+  const id = c.req.param("id");
+  const [session] = await db
+    .select()
+    .from(sessions)
+    .where(and(eq(sessions.id, id), eq(sessions.userId, user.userId)))
+    .limit(1);
+  if (!session) return c.json({ error: "Session not found" }, 404);
+  await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, id));
+  return c.json({ data: { revoked: true } });
 });
 
 export { authRouter };

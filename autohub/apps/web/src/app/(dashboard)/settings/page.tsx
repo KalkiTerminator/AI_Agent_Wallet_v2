@@ -30,6 +30,10 @@ export default function SettingsPage() {
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [subLoading, setSubLoading] = useState(true);
 
+  // Sessions section
+  const [activeSessions, setActiveSessions] = useState<Array<{id:string;createdAt:string;userAgent:string|null;ip:string|null;current:boolean}>>([]);
+  const [activeSessionsLoading, setActiveSessionsLoading] = useState(true);
+
   // Seed name from session
   useEffect(() => {
     if (session?.user?.name) setFullName(session.user.name);
@@ -51,6 +55,27 @@ export default function SettingsPage() {
   useEffect(() => {
     fetchSubscription();
   }, [fetchSubscription]);
+
+  const fetchSessions = useCallback(async () => {
+    if (!session?.apiToken) return;
+    try {
+      const res = await apiClient.get<{ data: typeof activeSessions }>(
+        "/api/auth/sessions",
+        session.apiToken
+      );
+      setActiveSessions(res.data);
+    } finally {
+      setActiveSessionsLoading(false);
+    }
+  }, [session?.apiToken]);
+
+  useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  async function handleRevokeSession(id: string) {
+    if (!session?.apiToken) return;
+    await apiClient.delete(`/api/auth/sessions/${id}`, session.apiToken);
+    setActiveSessions((prev) => prev.filter((s) => s.id !== id));
+  }
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -223,6 +248,33 @@ export default function SettingsPage() {
           </div>
         ) : (
           <p className="text-xs text-muted-foreground">No active subscription</p>
+        )}
+      </div>
+
+      {/* Security — Active Sessions */}
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold">Active Sessions</h2>
+        {activeSessionsLoading ? (
+          <Skeleton className="h-10 w-full" />
+        ) : activeSessions.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No active sessions</p>
+        ) : (
+          <ul className="space-y-2">
+            {activeSessions.map((s) => (
+              <li key={s.id} className="flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-muted-foreground">{s.userAgent ?? "Unknown device"}</span>
+                  {s.current && <span className="ml-2 text-success">(this session)</span>}
+                  <div className="text-muted-foreground/60">{s.ip} · {new Date(s.createdAt).toLocaleDateString()}</div>
+                </div>
+                {!s.current && (
+                  <Button variant="ghost" size="sm" className="h-6 text-xs text-destructive" onClick={() => handleRevokeSession(s.id)}>
+                    Revoke
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </div>
