@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { aiTools, toolUsages, toolAccess } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
+import { requireVerified } from "../middleware/require-verified.js";
 import { rateLimit } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
@@ -241,7 +242,7 @@ toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // POST /api/tools/:id/execute — two-phase commit execution
-toolsRouter.post("/:id/execute", requireAuth, rateLimit(RATE_LIMITS.TOOL_EXECUTE), async (c) => {
+toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimit(RATE_LIMITS.TOOL_EXECUTE), async (c) => {
   const toolId = c.req.param("id");
   const user = c.get("user");
   const body = await c.req.json();

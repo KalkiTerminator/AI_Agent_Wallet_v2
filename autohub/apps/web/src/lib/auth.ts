@@ -29,9 +29,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const data = await res.json() as {
             token: string;
             user: { id: string; email: string; fullName: string | null; role: string };
+            emailVerifiedAt?: string | null;
+            mfaRequired?: boolean;
+            mfaToken?: string;
           };
 
           if (!data?.token || !data?.user?.id) return null;
+
+          // MFA step-up: don't issue full session yet
+          if ((data as any).mfaRequired) {
+            return {
+              id: data.user.id,
+              email: data.user.email,
+              name: data.user.fullName ?? data.user.email,
+              role: data.user.role,
+              token: "",
+              mfaPending: true,
+              mfaToken: (data as any).mfaToken,
+            };
+          }
 
           return {
             id: data.user.id,
@@ -39,6 +55,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: data.user.fullName ?? data.user.email,
             role: data.user.role,
             token: data.token,
+            emailVerified: !!(data as any).emailVerifiedAt,
           };
         } catch {
           return null;
@@ -51,8 +68,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id as string;
-        token.role = (user as { role: string }).role;
-        token.apiToken = (user as { token: string }).token;
+        token.role = (user as any).role;
+        token.apiToken = (user as any).token;
+        token.mfaPending = (user as any).mfaPending ?? false;
+        token.mfaToken = (user as any).mfaToken ?? null;
+        token.emailVerified = (user as any).emailVerified ?? false;
       }
       return token;
     },
@@ -60,6 +80,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.user.id = token.id as string;
       session.user.role = token.role as string;
       session.apiToken = token.apiToken as string;
+      session.mfaPending = token.mfaPending as boolean;
+      session.mfaToken = token.mfaToken as string | null;
+      session.emailVerified = token.emailVerified as boolean;
       return session;
     },
   },
@@ -77,6 +100,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 declare module "next-auth" {
   interface Session {
     apiToken: string;
+    mfaPending: boolean;
+    mfaToken: string | null;
+    emailVerified: boolean;
     user: {
       id: string;
       role: string;
@@ -92,5 +118,8 @@ declare module "@auth/core/jwt" {
     id: string;
     role: string;
     apiToken: string;
+    mfaPending: boolean;
+    mfaToken: string | null;
+    emailVerified: boolean;
   }
 }

@@ -1,14 +1,15 @@
 import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { eq, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, userRoles, credits, passwordResetTokens } from "../db/schema.js";
+import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens } from "../db/schema.js";
 import { RegisterSchema, LoginSchema } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
+import { sendVerificationEmail } from "../services/email.js";
 
 const authRouter = new Hono();
 
@@ -31,12 +32,36 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   await logAuditEvent({ userId: user.id, action: "auth.signup", ip, requestId });
 
   const token = jwt.sign(
-    { userId: user.id, email: user.email, role: "user" },
+    {
+      userId: user.id,
+      email: user.email,
+      role: "user",
+      jti: randomUUID(),
+      emailVerified: false,
+      mfaEnabled: false,
+    },
     process.env.NEXTAUTH_SECRET!,
-    { expiresIn: "7d" }
+    { expiresIn: "1d" }
   );
 
-  return c.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName } }, 201);
+  // Send email verification
+  const rawVerifyToken = randomBytes(32).toString("hex");
+  const verifyTokenHash = await bcrypt.hash(rawVerifyToken, 10);
+  const verifyExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await db.insert(emailVerificationTokens).values({
+    tokenHash: verifyTokenHash,
+    userId: user.id,
+    expiresAt: verifyExpiresAt,
+  });
+  await sendVerificationEmail(user.email, rawVerifyToken).catch((err) =>
+    console.error("[EMAIL] Failed to send verification:", err)
+  );
+
+  return c.json({
+    token,
+    user: { id: user.id, email: user.email, fullName: user.fullName },
+    requiresVerification: true,
+  }, 201);
 });
 
 authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
@@ -62,9 +87,16 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
 
   const token = jwt.sign(
-    { userId: user.id, email: user.email, role },
+    {
+      userId: user.id,
+      email: user.email,
+      role,
+      jti: randomUUID(),
+      emailVerified: !!user.emailVerifiedAt,
+      mfaEnabled: user.mfaEnabled ?? false,
+    },
     process.env.NEXTAUTH_SECRET!,
-    { expiresIn: "7d" }
+    { expiresIn: "1d" }
   );
 
   return c.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName, role } });
@@ -173,6 +205,75 @@ authRouter.post("/reset/confirm", async (c) => {
   await logAuditEvent({ userId: matched.userId, action: "auth.password_reset.completed", ip: ip2, requestId: requestId2 });
 
   return c.json({ data: { message: "Password reset successfully." } });
+});
+
+// GET /auth/verify-email?token=<raw> — verify email address
+authRouter.get("/verify-email", async (c) => {
+  const raw = c.req.query("token");
+  if (!raw) return c.json({ error: "Missing token" }, 400);
+
+  const now = new Date();
+  const candidates = await db
+    .select()
+    .from(emailVerificationTokens)
+    .where(isNull(emailVerificationTokens.usedAt));
+
+  let matched: typeof candidates[0] | null = null;
+  for (const row of candidates) {
+    if (row.expiresAt < now) continue;
+    const ok = await bcrypt.compare(raw, row.tokenHash);
+    if (ok) { matched = row; break; }
+  }
+
+  if (!matched) return c.json({ error: "Invalid or expired verification token" }, 400);
+
+  await db
+    .update(users)
+    .set({ emailVerifiedAt: now, updatedAt: now })
+    .where(eq(users.id, matched.userId));
+  await db
+    .update(emailVerificationTokens)
+    .set({ usedAt: now })
+    .where(eq(emailVerificationTokens.tokenHash, matched.tokenHash));
+
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
+  await logAuditEvent({ userId: matched.userId, action: "auth.email_verified", ip, requestId });
+
+  return c.redirect(`${process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000"}/dashboard?verified=true`);
+});
+
+// POST /auth/resend-verification — resend verification email (auth required)
+authRouter.post("/resend-verification", requireAuth, async (c) => {
+  const user = c.get("user");
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
+
+  const [dbUser] = await db
+    .select({ id: users.id, email: users.email, emailVerifiedAt: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.id, user.userId))
+    .limit(1);
+
+  if (!dbUser) return c.json({ error: "User not found" }, 404);
+  if (dbUser.emailVerifiedAt) return c.json({ data: { message: "Email already verified" } });
+
+  // Delete all existing tokens for this user before creating new one
+  await db
+    .delete(emailVerificationTokens)
+    .where(eq(emailVerificationTokens.userId, dbUser.id));
+
+  const raw = randomBytes(32).toString("hex");
+  const tokenHash = await bcrypt.hash(raw, 10);
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  await db.insert(emailVerificationTokens).values({ tokenHash, userId: dbUser.id, expiresAt });
+
+  await sendVerificationEmail(dbUser.email, raw).catch((err) =>
+    console.error("[EMAIL] Failed to send verification:", err)
+  );
+  await logAuditEvent({ userId: dbUser.id, action: "auth.verification_resent", ip, requestId });
+
+  return c.json({ data: { message: "Verification email sent" } });
 });
 
 export { authRouter };

@@ -55,6 +55,12 @@ export function SignUpForm() {
         setServerError(body.error ?? "Registration failed. Please try again.");
         return;
       }
+
+      const data = await res.json() as { requiresVerification?: boolean };
+      if (data.requiresVerification) {
+        router.push("/auth/verify-pending");
+        return;
+      }
     } catch {
       setServerError("Registration failed. Please check your connection and try again.");
       return;

@@ -6,7 +6,7 @@ function makeApp(role: string) {
   const app = new Hono();
   // Simulate requireAuth by injecting user context manually
   app.use("*", async (c, next) => {
-    c.set("user", { userId: "u1", email: "t@t.com", role });
+    c.set("user", { userId: "u1", email: "t@t.com", role, jti: "test-jti", emailVerified: true, mfaEnabled: false });
     await next();
   });
   app.get("/test", requireRole("moderator"), (c) => c.json({ ok: true }));
