@@ -16,6 +16,10 @@ export const users = pgTable("users", {
   fullName: text("full_name"),
   isActive: boolean("is_active").notNull().default(true),
   stripeCustomerId: text("stripe_customer_id"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  mfaSecretEncrypted: text("mfa_secret_encrypted"),
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -63,6 +67,7 @@ export const aiTools = pgTable("ai_tools", {
   rejectionReason: text("rejection_reason"),
   webhookTimeout: integer("webhook_timeout").notNull().default(30),
   webhookRetries: integer("webhook_retries").notNull().default(2),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -78,6 +83,7 @@ export const toolUsages = pgTable("tool_usages", {
   status: text("status", { enum: ["pending", "success", "failed", "refunded"] }).notNull().default("pending"),
   errorMessage: text("error_message"),
   ipAddress: text("ip_address"),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (t) => [
@@ -113,6 +119,7 @@ export const payments = pgTable("payments", {
   amount: integer("amount").notNull(), // in cents
   status: text("status", { enum: ["pending", "completed", "failed", "refunded"] }).notNull().default("pending"),
   creditsGranted: integer("credits_granted").notNull().default(0),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -183,6 +190,7 @@ export const executions = pgTable("executions", {
   responsePayload: jsonb("response_payload"),
   error: text("error"),
   creditsDebited: integer("credits_debited").notNull().default(0),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
   startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
 }, (t) => [
@@ -204,3 +212,35 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   usedAt: timestamp("used_at", { withTimezone: true }),
 });
+
+// ─── email_verification_tokens ──────────────────────────
+export const emailVerificationTokens = pgTable("email_verification_tokens", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+});
+
+// ─── sessions ───────────────────────────────────────────
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenJti: text("token_jti").notNull().unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+}, (t) => [
+  index("sessions_user_id_idx").on(t.userId),
+  index("sessions_jti_idx").on(t.tokenJti),
+]);
+
+// ─── mfa_backup_codes ───────────────────────────────────
+export const mfaBackupCodes = pgTable("mfa_backup_codes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+}, (t) => [
+  index("mfa_backup_codes_user_id_idx").on(t.userId),
+]);

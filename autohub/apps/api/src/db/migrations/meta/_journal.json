@@ -36,6 +36,13 @@
       "when": 1746316800000,
       "tag": "0004_encrypt_webhook_secrets",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1746403200000,
+      "tag": "0005_phase2_security",
+      "breakpoints": true
     }
   ]
 }
