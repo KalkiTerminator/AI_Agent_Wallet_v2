@@ -34,7 +34,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             mfaToken?: string;
           };
 
-          if (!data?.token || !data?.user?.id) return null;
+          if (!(data as any).mfaRequired && (!data?.token || !data?.user?.id)) return null;
 
           // MFA step-up: don't issue full session yet
           if ((data as any).mfaRequired) {
