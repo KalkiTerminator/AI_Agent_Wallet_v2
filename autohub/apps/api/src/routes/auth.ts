@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomBytes, randomUUID } from "crypto";
-import { eq, isNull } from "drizzle-orm";
+import { randomBytes, randomUUID, createHmac } from "crypto";
+import { eq, isNull, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens } from "../db/schema.js";
 import { RegisterSchema, LoginSchema } from "@autohub/shared";
@@ -10,6 +10,10 @@ import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
 import { sendVerificationEmail } from "../services/email.js";
+
+function hashVerifyToken(raw: string): string {
+  return createHmac("sha256", process.env.NEXTAUTH_SECRET!).update(raw).digest("hex");
+}
 
 const authRouter = new Hono();
 
@@ -46,7 +50,7 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
 
   // Send email verification
   const rawVerifyToken = randomBytes(32).toString("hex");
-  const verifyTokenHash = await bcrypt.hash(rawVerifyToken, 10);
+  const verifyTokenHash = hashVerifyToken(rawVerifyToken);
   const verifyExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   await db.insert(emailVerificationTokens).values({
     tokenHash: verifyTokenHash,
@@ -99,7 +103,11 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
     { expiresIn: "1d" }
   );
 
-  return c.json({ token, user: { id: user.id, email: user.email, fullName: user.fullName, role } });
+  return c.json({
+    token,
+    user: { id: user.id, email: user.email, fullName: user.fullName, role },
+    emailVerifiedAt: user.emailVerifiedAt,
+  });
 });
 
 // PATCH /auth/profile — update fullName
@@ -213,16 +221,20 @@ authRouter.get("/verify-email", async (c) => {
   if (!raw) return c.json({ error: "Missing token" }, 400);
 
   const now = new Date();
-  const candidates = await db
+  const tokenHash = hashVerifyToken(raw);
+  const [matched] = await db
     .select()
     .from(emailVerificationTokens)
-    .where(isNull(emailVerificationTokens.usedAt));
+    .where(
+      and(
+        eq(emailVerificationTokens.tokenHash, tokenHash),
+        isNull(emailVerificationTokens.usedAt)
+      )
+    )
+    .limit(1);
 
-  let matched: typeof candidates[0] | null = null;
-  for (const row of candidates) {
-    if (row.expiresAt < now) continue;
-    const ok = await bcrypt.compare(raw, row.tokenHash);
-    if (ok) { matched = row; break; }
+  if (matched && matched.expiresAt < now) {
+    return c.json({ error: "Invalid or expired verification token" }, 400);
   }
 
   if (!matched) return c.json({ error: "Invalid or expired verification token" }, 400);
@@ -264,7 +276,7 @@ authRouter.post("/resend-verification", requireAuth, async (c) => {
     .where(eq(emailVerificationTokens.userId, dbUser.id));
 
   const raw = randomBytes(32).toString("hex");
-  const tokenHash = await bcrypt.hash(raw, 10);
+  const tokenHash = hashVerifyToken(raw);
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
   await db.insert(emailVerificationTokens).values({ tokenHash, userId: dbUser.id, expiresAt });
 

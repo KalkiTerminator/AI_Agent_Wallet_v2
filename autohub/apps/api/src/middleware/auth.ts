@@ -2,7 +2,7 @@ import { createMiddleware } from "hono/factory";
 import jwt from "jsonwebtoken";
 import { db } from "../db/index.js";
 import { sessions } from "../db/schema.js";
-import { eq, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 export interface JwtPayload {
   userId: string;
