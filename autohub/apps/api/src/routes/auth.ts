@@ -222,6 +222,7 @@ authRouter.post("/reset/confirm", async (c) => {
     .update(users)
     .set({ passwordHash: newHash, updatedAt: new Date() })
     .where(eq(users.id, matched.userId));
+  await revokeAllSessions(matched.userId);
   await db
     .update(passwordResetTokens)
     .set({ usedAt: new Date() })
