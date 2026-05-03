@@ -4,12 +4,14 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHmac } from "crypto";
 import { eq, isNull, and } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions } from "../db/schema.js";
+import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions, mfaBackupCodes } from "../db/schema.js";
 import { RegisterSchema, LoginSchema } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
 import { sendVerificationEmail } from "../services/email.js";
+import { generateSecret as totpGenerateSecret, verifySync as totpVerifySync, generateURI as totpGenerateURI } from "otplib";
+import { encrypt, decrypt } from "../services/crypto.js";
 
 function hashVerifyToken(raw: string): string {
   return createHmac("sha256", process.env.NEXTAUTH_SECRET!).update(raw).digest("hex");
@@ -97,6 +99,15 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   const role = roleRow?.role ?? "user";
 
   await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
+
+  if (user.mfaEnabled) {
+    const mfaToken = jwt.sign(
+      { userId: user.id, type: "mfa_pending" },
+      process.env.NEXTAUTH_SECRET!,
+      { expiresIn: "5m" }
+    );
+    return c.json({ mfaRequired: true, mfaToken, user: { id: user.id, email: user.email, role } });
+  }
 
   const jti = randomUUID();
   const token = jwt.sign(
@@ -348,6 +359,163 @@ authRouter.delete("/sessions/:id", requireAuth, async (c) => {
   if (!session) return c.json({ error: "Session not found" }, 404);
   await db.update(sessions).set({ revokedAt: new Date() }).where(eq(sessions.id, id));
   return c.json({ data: { revoked: true } });
+});
+
+// POST /auth/mfa/setup — generate TOTP secret, store encrypted, return otpauthUrl
+authRouter.post("/mfa/setup", requireAuth, async (c) => {
+  const user = c.get("user");
+  const [dbUser] = await db.select({ email: users.email }).from(users).where(eq(users.id, user.userId)).limit(1);
+  if (!dbUser) return c.json({ error: "User not found" }, 404);
+
+  const secret = totpGenerateSecret();
+  const otpauthUrl = totpGenerateURI({ issuer: "AutoHub", label: dbUser.email, secret });
+  const encryptedSecret = encrypt(secret);
+
+  await db.update(users)
+    .set({ mfaSecretEncrypted: encryptedSecret, mfaEnabled: false })
+    .where(eq(users.id, user.userId));
+
+  return c.json({ data: { otpauthUrl, secret } });
+});
+
+// POST /auth/mfa/verify-setup — confirm TOTP code, enable MFA, return backup codes
+authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ code: string }>();
+  if (!body.code) return c.json({ error: "code is required" }, 400);
+
+  const [dbUser] = await db
+    .select({ mfaSecretEncrypted: users.mfaSecretEncrypted })
+    .from(users).where(eq(users.id, user.userId)).limit(1);
+  if (!dbUser?.mfaSecretEncrypted) return c.json({ error: "MFA setup not started" }, 400);
+
+  const secret = decrypt(dbUser.mfaSecretEncrypted);
+  const result = totpVerifySync({ token: body.code, secret });
+  if (!result.valid) return c.json({ error: "Invalid TOTP code" }, 400);
+
+  const plainCodes: string[] = [];
+  const hashedCodes: Array<{ userId: string; codeHash: string }> = [];
+  for (let i = 0; i < 10; i++) {
+    const code = randomBytes(4).toString("hex").toUpperCase();
+    plainCodes.push(code);
+    hashedCodes.push({ userId: user.userId, codeHash: await bcrypt.hash(code, 10) });
+  }
+
+  await db.delete(mfaBackupCodes).where(eq(mfaBackupCodes.userId, user.userId));
+  await db.insert(mfaBackupCodes).values(hashedCodes);
+  await db.update(users).set({ mfaEnabled: true }).where(eq(users.id, user.userId));
+
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
+  await logAuditEvent({ userId: user.userId, action: "auth.mfa_enabled", ip, requestId });
+
+  return c.json({ data: { backupCodes: plainCodes } });
+});
+
+// POST /auth/mfa/disable — disable MFA (requires current TOTP or backup code)
+authRouter.post("/mfa/disable", requireAuth, async (c) => {
+  const user = c.get("user");
+  const body = await c.req.json<{ code: string }>();
+  if (!body.code) return c.json({ error: "code is required" }, 400);
+
+  const [dbUser] = await db
+    .select({ mfaSecretEncrypted: users.mfaSecretEncrypted, mfaEnabled: users.mfaEnabled })
+    .from(users).where(eq(users.id, user.userId)).limit(1);
+  if (!dbUser?.mfaEnabled) return c.json({ error: "MFA is not enabled" }, 400);
+
+  let verified = false;
+  if (dbUser.mfaSecretEncrypted) {
+    const secret = decrypt(dbUser.mfaSecretEncrypted);
+    verified = totpVerifySync({ token: body.code, secret }).valid;
+  }
+
+  if (!verified) {
+    const backups = await db
+      .select()
+      .from(mfaBackupCodes)
+      .where(and(eq(mfaBackupCodes.userId, user.userId), isNull(mfaBackupCodes.usedAt)));
+    for (const b of backups) {
+      if (await bcrypt.compare(body.code, b.codeHash)) {
+        await db.update(mfaBackupCodes).set({ usedAt: new Date() }).where(eq(mfaBackupCodes.id, b.id));
+        verified = true;
+        break;
+      }
+    }
+  }
+
+  if (!verified) return c.json({ error: "Invalid code" }, 400);
+
+  await db.update(users)
+    .set({ mfaEnabled: false, mfaSecretEncrypted: null })
+    .where(eq(users.id, user.userId));
+  await db.delete(mfaBackupCodes).where(eq(mfaBackupCodes.userId, user.userId));
+
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  const requestId = (c.get as any)("requestId");
+  await logAuditEvent({ userId: user.userId, action: "auth.mfa_disabled", ip, requestId });
+
+  return c.json({ data: { disabled: true } });
+});
+
+// POST /auth/mfa/challenge — complete MFA step-up, receive full JWT
+authRouter.post("/mfa/challenge", async (c) => {
+  const body = await c.req.json<{ mfaToken: string; code: string }>();
+  if (!body.mfaToken || !body.code) return c.json({ error: "mfaToken and code are required" }, 400);
+
+  let payload: { userId: string; type: string } & Record<string, unknown>;
+  try {
+    payload = jwt.verify(body.mfaToken, process.env.NEXTAUTH_SECRET!) as typeof payload;
+  } catch {
+    return c.json({ error: "Invalid or expired MFA token" }, 400);
+  }
+  if (payload.type !== "mfa_pending") return c.json({ error: "Invalid token type" }, 400);
+
+  const [dbUser] = await db
+    .select()
+    .from(users)
+    .where(and(eq(users.id, payload.userId as string), isNull(users.deletedAt)))
+    .limit(1);
+  if (!dbUser) return c.json({ error: "User not found" }, 404);
+
+  let verified = false;
+  if (dbUser.mfaSecretEncrypted) {
+    const secret = decrypt(dbUser.mfaSecretEncrypted);
+    verified = totpVerifySync({ token: body.code, secret }).valid;
+  }
+  if (!verified) {
+    const backups = await db
+      .select()
+      .from(mfaBackupCodes)
+      .where(and(eq(mfaBackupCodes.userId, dbUser.id), isNull(mfaBackupCodes.usedAt)));
+    for (const b of backups) {
+      if (await bcrypt.compare(body.code, b.codeHash)) {
+        await db.update(mfaBackupCodes).set({ usedAt: new Date() }).where(eq(mfaBackupCodes.id, b.id));
+        verified = true;
+        break;
+      }
+    }
+  }
+  if (!verified) return c.json({ error: "Invalid MFA code" }, 400);
+
+  const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, dbUser.id)).limit(1);
+  const role = roleRow?.role ?? "user";
+  const jti = randomUUID();
+
+  const token = jwt.sign(
+    { userId: dbUser.id, email: dbUser.email, role, jti, emailVerified: !!dbUser.emailVerifiedAt, mfaEnabled: true },
+    process.env.NEXTAUTH_SECRET!,
+    { expiresIn: "1d" }
+  );
+
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+  await db.insert(sessions).values({
+    userId: dbUser.id, tokenJti: jti,
+    userAgent: c.req.header("user-agent") ?? null, ip,
+  }).catch(() => {});
+
+  await logAuditEvent({ userId: dbUser.id, action: "auth.mfa_challenge_success", ip });
+
+  return c.json({ token, user: { id: dbUser.id, email: dbUser.email, fullName: dbUser.fullName, role } });
 });
 
 export { authRouter };

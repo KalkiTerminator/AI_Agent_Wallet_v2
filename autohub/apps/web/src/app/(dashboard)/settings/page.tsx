@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { apiClient } from "@/lib/api-client";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import type { SubscriptionStatus } from "@/types";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -33,6 +36,14 @@ export default function SettingsPage() {
   // Sessions section
   const [activeSessions, setActiveSessions] = useState<Array<{id:string;createdAt:string;userAgent:string|null;ip:string|null;current:boolean}>>([]);
   const [activeSessionsLoading, setActiveSessionsLoading] = useState(true);
+
+  // MFA section
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaSetupData, setMfaSetupData] = useState<{ otpauthUrl: string; secret: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+  const [mfaState, setMfaState] = useState<"idle"|"enrolling"|"confirming"|"done"|"disabling">("idle");
+  const [mfaError, setMfaError] = useState("");
 
   // Seed name from session
   useEffect(() => {
@@ -110,6 +121,61 @@ export default function SettingsPage() {
     } catch (err) {
       setPasswordError(err instanceof Error ? err.message : "Failed to change password");
       setPasswordState("error");
+    }
+  }
+
+  async function handleStartMfaEnroll() {
+    if (!session?.apiToken) return;
+    setMfaState("enrolling");
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/mfa/setup`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.apiToken}` },
+      });
+      const json = await res.json() as { data: { otpauthUrl: string; secret: string } };
+      setMfaSetupData(json.data);
+      setTimeout(async () => {
+        const canvas = document.getElementById("mfa-qr") as HTMLCanvasElement | null;
+        if (canvas) await QRCode.toCanvas(canvas, json.data.otpauthUrl, { width: 180 });
+      }, 100);
+    } catch {
+      setMfaState("idle");
+    }
+  }
+
+  async function handleConfirmMfaEnroll() {
+    if (!session?.apiToken || !mfaCode) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/mfa/verify-setup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.apiToken}` },
+        body: JSON.stringify({ code: mfaCode }),
+      });
+      const json = await res.json() as { data?: { backupCodes: string[] }; error?: string };
+      if (!res.ok) { setMfaError(json.error ?? "Invalid code"); return; }
+      setBackupCodes(json.data!.backupCodes);
+      setMfaEnabled(true);
+      setMfaState("done");
+    } catch {
+      setMfaError("Something went wrong");
+    }
+  }
+
+  async function handleDisableMfa() {
+    if (!session?.apiToken || !mfaCode) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/mfa/disable`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.apiToken}` },
+        body: JSON.stringify({ code: mfaCode }),
+      });
+      const json = await res.json() as { data?: unknown; error?: string };
+      if (!res.ok) { setMfaError(json.error ?? "Invalid code"); return; }
+      setMfaEnabled(false);
+      setMfaState("idle");
+      setMfaCode("");
+    } catch {
+      setMfaError("Something went wrong");
     }
   }
 
@@ -275,6 +341,54 @@ export default function SettingsPage() {
               </li>
             ))}
           </ul>
+        )}
+      </div>
+      {/* MFA */}
+      <div className="glass rounded-xl p-5 space-y-4">
+        <h2 className="text-sm font-semibold">Two-Factor Authentication</h2>
+        {mfaState === "idle" && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              {mfaEnabled ? "MFA is enabled on your account." : "Add an extra layer of security to your account."}
+            </p>
+            {mfaEnabled ? (
+              <Button variant="outline" size="sm" className="h-7 text-xs text-destructive" onClick={() => setMfaState("disabling")}>
+                Disable MFA
+              </Button>
+            ) : (
+              <Button size="sm" className="h-7 text-xs" onClick={handleStartMfaEnroll}>
+                Enable MFA
+              </Button>
+            )}
+          </div>
+        )}
+        {mfaState === "enrolling" && mfaSetupData && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Scan this QR code with your authenticator app:</p>
+            <canvas id="mfa-qr" className="rounded-lg" />
+            <p className="text-xs text-muted-foreground">Or enter this secret manually: <code className="text-xs">{mfaSetupData.secret}</code></p>
+            <Input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="Enter 6-digit code" maxLength={6} className="h-8 text-xs" />
+            {mfaError && <p className="text-xs text-destructive">{mfaError}</p>}
+            <Button size="sm" className="h-7 text-xs" onClick={handleConfirmMfaEnroll} disabled={mfaCode.length < 6}>Verify & Enable</Button>
+          </div>
+        )}
+        {mfaState === "done" && (
+          <div className="space-y-3">
+            <p className="text-xs text-success">MFA enabled! Save these backup codes — they won&apos;t be shown again:</p>
+            <pre className="text-xs bg-muted/40 rounded p-3">{backupCodes.join("\n")}</pre>
+            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setMfaState("idle")}>Done</Button>
+          </div>
+        )}
+        {mfaState === "disabling" && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">Enter your current TOTP code or a backup code to disable MFA:</p>
+            <Input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="Code" className="h-8 text-xs" />
+            {mfaError && <p className="text-xs text-destructive">{mfaError}</p>}
+            <div className="flex gap-2">
+              <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={handleDisableMfa}>Disable</Button>
+              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setMfaState("idle"); setMfaError(""); }}>Cancel</Button>
+            </div>
+          </div>
         )}
       </div>
     </div>

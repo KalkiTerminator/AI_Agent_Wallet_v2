@@ -21,6 +21,7 @@
     "hono": "^4.7.4",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^6.9.16",
+    "otplib": "^13.4.0",
     "pg": "^8.13.3",
     "resend": "^6.12.2",
     "stripe": "^17.7.0",

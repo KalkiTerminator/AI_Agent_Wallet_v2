@@ -41,6 +41,12 @@ export const requireAuth = createMiddleware(async (c, next) => {
     }
 
     c.set("user", payload);
+
+    // Force MFA enrollment for privileged roles
+    if ((payload.role === "admin" || payload.role === "moderator") && !payload.mfaEnabled) {
+      return c.json({ error: "mfa_required_for_role" }, 403);
+    }
+
     await next();
   } catch {
     return c.json({ error: "Invalid token" }, 401);
