@@ -10,7 +10,7 @@ import { Loader2 } from "lucide-react";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export default function MfaChallengePage() {
-  const { data: session } = useSession();
+  const { data: session, update } = useSession();
   const router = useRouter();
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -29,6 +29,9 @@ export default function MfaChallengePage() {
       });
       const data = await res.json() as { token?: string; user?: { id: string; email: string; fullName: string | null; role: string }; error?: string };
       if (!res.ok || !data.token) { setError(data.error ?? "Invalid code"); return; }
+
+      // Update the NextAuth session with the full API token
+      await update({ apiToken: data.token, mfaPending: false, mfaToken: null });
 
       router.push("/dashboard");
       router.refresh();

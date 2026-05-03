@@ -65,7 +65,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id as string;
         token.role = (user as any).role;
@@ -73,6 +73,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.mfaPending = (user as any).mfaPending ?? false;
         token.mfaToken = (user as any).mfaToken ?? null;
         token.emailVerified = (user as any).emailVerified ?? false;
+        token.mfaEnabled = (user as any).mfaEnabled ?? false;
+      }
+      // Handle session.update() calls from MFA challenge completion
+      if (trigger === "update" && session?.apiToken) {
+        token.apiToken = session.apiToken;
+        token.mfaPending = session.mfaPending ?? false;
+        token.mfaToken = session.mfaToken ?? null;
       }
       return token;
     },
@@ -83,6 +90,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       session.mfaPending = token.mfaPending as boolean;
       session.mfaToken = token.mfaToken as string | null;
       session.emailVerified = token.emailVerified as boolean;
+      session.mfaEnabled = token.mfaEnabled as boolean;
       return session;
     },
   },
@@ -103,6 +111,7 @@ declare module "next-auth" {
     mfaPending: boolean;
     mfaToken: string | null;
     emailVerified: boolean;
+    mfaEnabled: boolean;
     user: {
       id: string;
       role: string;
@@ -121,5 +130,6 @@ declare module "@auth/core/jwt" {
     mfaPending: boolean;
     mfaToken: string | null;
     emailVerified: boolean;
+    mfaEnabled: boolean;
   }
 }

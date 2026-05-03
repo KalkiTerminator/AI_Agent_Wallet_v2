@@ -50,6 +50,13 @@ export default function SettingsPage() {
     if (session?.user?.name) setFullName(session.user.name);
   }, [session?.user?.name]);
 
+  // Seed mfaEnabled from session (forwarded from JWT mfaEnabled claim)
+  useEffect(() => {
+    if (session) {
+      setMfaEnabled(session.mfaEnabled ?? false);
+    }
+  }, [session]);
+
   const fetchSubscription = useCallback(async () => {
     if (!session?.apiToken) return;
     try {

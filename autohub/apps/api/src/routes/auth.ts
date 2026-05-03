@@ -364,8 +364,9 @@ authRouter.delete("/sessions/:id", requireAuth, async (c) => {
 // POST /auth/mfa/setup — generate TOTP secret, store encrypted, return otpauthUrl
 authRouter.post("/mfa/setup", requireAuth, async (c) => {
   const user = c.get("user");
-  const [dbUser] = await db.select({ email: users.email }).from(users).where(eq(users.id, user.userId)).limit(1);
+  const [dbUser] = await db.select({ email: users.email, mfaEnabled: users.mfaEnabled }).from(users).where(eq(users.id, user.userId)).limit(1);
   if (!dbUser) return c.json({ error: "User not found" }, 404);
+  if (dbUser.mfaEnabled) return c.json({ error: "MFA already enabled — disable first to re-enroll" }, 409);
 
   const secret = totpGenerateSecret();
   const otpauthUrl = totpGenerateURI({ issuer: "AutoHub", label: dbUser.email, secret });
@@ -390,7 +391,7 @@ authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
   if (!dbUser?.mfaSecretEncrypted) return c.json({ error: "MFA setup not started" }, 400);
 
   const secret = decrypt(dbUser.mfaSecretEncrypted);
-  const result = totpVerifySync({ token: body.code, secret });
+  const result = totpVerifySync({ token: body.code, secret, epochTolerance: 1 });
   if (!result.valid) return c.json({ error: "Invalid TOTP code" }, 400);
 
   const plainCodes: string[] = [];
@@ -426,7 +427,7 @@ authRouter.post("/mfa/disable", requireAuth, async (c) => {
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
     const secret = decrypt(dbUser.mfaSecretEncrypted);
-    verified = totpVerifySync({ token: body.code, secret }).valid;
+    verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
   }
 
   if (!verified) {
@@ -480,7 +481,7 @@ authRouter.post("/mfa/challenge", async (c) => {
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
     const secret = decrypt(dbUser.mfaSecretEncrypted);
-    verified = totpVerifySync({ token: body.code, secret }).valid;
+    verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
   }
   if (!verified) {
     const backups = await db
