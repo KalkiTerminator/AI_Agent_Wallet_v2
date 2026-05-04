@@ -41,7 +41,7 @@ app.use("*", async (c, next) => {
   const ms = Date.now() - start;
   const status = c.res.status;
   const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
-  logger[level]({ method: c.req.method, url: c.req.path, status, durationMs: ms }, "http");
+  logger[level]({ method: c.req.method, url: c.req.path, status, durationMs: ms, requestId: (c.get as any)("requestId") }, "http");
 });
 app.use("*", securityHeaders());
 

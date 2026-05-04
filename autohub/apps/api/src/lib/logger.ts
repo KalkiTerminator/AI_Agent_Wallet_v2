@@ -15,7 +15,6 @@ const transport: pino.TransportSingleOptions | undefined = isDev
 export const logger = pino(
   {
     level: isDev ? "debug" : "info",
-    redact: ["req.headers.authorization", "req.headers.cookie"],
     base: { service: "autohub-api" },
   },
   transport ? pino.transport(transport) : undefined
