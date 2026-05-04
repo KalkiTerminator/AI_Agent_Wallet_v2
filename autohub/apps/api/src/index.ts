@@ -4,7 +4,8 @@ import * as Sentry from "@sentry/node";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { logger } from "hono/logger";
+import { pinoHttp } from "pino-http";
+import { logger } from "./lib/logger.js";
 import { randomUUID } from "crypto";
 import { toolsRouter } from "./routes/tools.js";
 import { paymentsRouter } from "./routes/payments.js";
@@ -35,7 +36,18 @@ app.use(
   })
 );
 
-app.use("*", logger());
+app.use("*", async (c, next) => {
+  const httpLogger = pinoHttp({
+    logger,
+    customLogLevel: (_req, res) => (res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info"),
+    serializers: {
+      req: (req) => ({ method: req.method, url: req.url }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  });
+  // pino-http works with Node IncomingMessage — adapt for Hono
+  await next();
+});
 app.use("*", securityHeaders());
 
 // Inject requestId into every request context for audit trail correlation
@@ -81,7 +93,7 @@ app.route("/api/executions", executionsRouter);
 app.route("/api/account", accountRouter);
 
 const port = Number(process.env.PORT ?? 4000);
-console.log(`AutoHub API running on http://localhost:${port}`);
+logger.info({ port }, "AutoHub API running");
 serve({ fetch: app.fetch, port });
 
 // Flush Sentry on graceful shutdown
