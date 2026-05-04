@@ -9,7 +9,7 @@ import { RegisterSchema, LoginSchema } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
-import { sendVerificationEmail } from "../services/email.js";
+import { sendVerificationEmail, sendPasswordResetEmail } from "../services/email.js";
 import { generateSecret as totpGenerateSecret, verifySync as totpVerifySync, generateURI as totpGenerateURI } from "otplib";
 import { encrypt, decrypt } from "../services/crypto.js";
 
@@ -193,11 +193,7 @@ authRouter.post("/reset/request", async (c) => {
 
   await logAuditEvent({ userId: user.id, action: "auth.password_reset.requested", ip, requestId });
 
-  const resetUrl = `${process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000"}/auth/reset-password/${token}`;
-  // Do NOT log the reset URL — it contains the raw token. Send via email only.
-  if (process.env.NODE_ENV !== "production") {
-    console.log(`[DEV PASSWORD RESET] ${resetUrl}`);
-  }
+  await sendPasswordResetEmail(user.email, token);
 
   return c.json({ data: { message: "If that email exists, a reset link has been sent." } });
 });
