@@ -4,7 +4,6 @@ import * as Sentry from "@sentry/node";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { pinoHttp } from "pino-http";
 import { logger } from "./lib/logger.js";
 import { randomUUID } from "crypto";
 import { toolsRouter } from "./routes/tools.js";
@@ -37,16 +36,12 @@ app.use(
 );
 
 app.use("*", async (c, next) => {
-  const httpLogger = pinoHttp({
-    logger,
-    customLogLevel: (_req, res) => (res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info"),
-    serializers: {
-      req: (req) => ({ method: req.method, url: req.url }),
-      res: (res) => ({ statusCode: res.statusCode }),
-    },
-  });
-  // pino-http works with Node IncomingMessage — adapt for Hono
+  const start = Date.now();
   await next();
+  const ms = Date.now() - start;
+  const status = c.res.status;
+  const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
+  logger[level]({ method: c.req.method, url: c.req.path, status, durationMs: ms }, "http");
 });
 app.use("*", securityHeaders());
 
