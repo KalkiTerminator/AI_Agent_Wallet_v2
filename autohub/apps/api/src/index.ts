@@ -23,7 +23,7 @@ import { eq } from "drizzle-orm";
 
 const app = new Hono();
 
-const allowedOrigins = (process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000").split(",");
+const allowedOrigins = (process.env.AUTOHUB_CORS_ORIGINS ?? process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000").split(",");
 
 app.use(
   "*",
