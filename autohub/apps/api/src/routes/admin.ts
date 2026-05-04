@@ -3,7 +3,7 @@ import { db } from "../db/index.js";
 import { users, userRoles, toolUsages, aiTools, payments, appConfig } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
-import { rateLimit } from "../middleware/rate-limit.js";
+import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { logAuditEvent } from "../services/audit.js";
@@ -21,7 +21,7 @@ const adminRouter = new Hono();
 
 adminRouter.use("*", requireAuth, requireAdmin);
 
-adminRouter.get("/users", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.get("/users", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const result = await db
     .select({
       id: users.id,
@@ -39,7 +39,7 @@ adminRouter.get("/users", rateLimit(RATE_LIMITS.READS), async (c) => {
   return c.json({ data: result });
 });
 
-adminRouter.get("/analytics", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.get("/analytics", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const [usageCount] = await db.select({ count: sql<number>`count(*)` }).from(toolUsages);
   const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt));
   const [revenue] = await db.select({ total: sql<number>`sum(amount)` }).from(payments).where(eq(payments.status, "completed"));
@@ -53,7 +53,7 @@ adminRouter.get("/analytics", rateLimit(RATE_LIMITS.READS), async (c) => {
   });
 });
 
-adminRouter.get("/tools", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.get("/tools", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const result = await db
     .select({
       id: aiTools.id,
@@ -73,7 +73,7 @@ adminRouter.get("/tools", rateLimit(RATE_LIMITS.READS), async (c) => {
   return c.json({ data: result });
 });
 
-adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.patch("/tools/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
   const actor = c.get("user");
   const body = await c.req.json<{
@@ -114,13 +114,13 @@ adminRouter.patch("/tools/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // GET /api/admin/roles — list available roles
-adminRouter.get("/roles", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.get("/roles", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const roles = await getRoles();
   return c.json({ data: roles });
 });
 
 // POST /api/admin/roles — add a new role
-adminRouter.post("/roles", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.post("/roles", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const body = await c.req.json<{ role: string }>();
   const name = body.role?.trim().toLowerCase();
   if (!name || !/^[a-z0-9_-]+$/.test(name)) {
@@ -135,7 +135,7 @@ adminRouter.post("/roles", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // DELETE /api/admin/roles/:role — remove a custom role
-adminRouter.delete("/roles/:role", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.delete("/roles/:role", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const { role } = c.req.param();
   if (["admin", "moderator", "user"].includes(role)) {
     return c.json({ error: "Cannot remove built-in roles" }, 400);
@@ -149,7 +149,7 @@ adminRouter.delete("/roles/:role", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // PATCH /api/admin/users/:id/role — change user role
-adminRouter.patch("/users/:id/role", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.patch("/users/:id/role", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
   const actor = c.get("user");
   const body = await c.req.json<{ role: string }>();
@@ -176,7 +176,7 @@ adminRouter.patch("/users/:id/role", rateLimit(RATE_LIMITS.READS), async (c) => 
 });
 
 // DELETE /api/admin/users/:id — soft-deactivate user
-adminRouter.delete("/users/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
+adminRouter.delete("/users/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const { id } = c.req.param();
   const actor = c.get("user");
   const [updated] = await db

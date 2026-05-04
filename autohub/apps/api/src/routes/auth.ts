@@ -12,12 +12,17 @@ import { logAuditEvent } from "../services/audit.js";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../services/email.js";
 import { generateSecret as totpGenerateSecret, verifySync as totpVerifySync, generateURI as totpGenerateURI } from "otplib";
 import { encrypt, decrypt } from "../services/crypto.js";
+import { rateLimitIp } from "../middleware/rate-limit.js";
 
 function hashVerifyToken(raw: string): string {
   return createHmac("sha256", process.env.NEXTAUTH_SECRET!).update(raw).digest("hex");
 }
 
 const authRouter = new Hono();
+
+authRouter.use("/login", rateLimitIp(10, 60_000));
+authRouter.use("/register", rateLimitIp(10, 60_000));
+authRouter.use("/reset/request", rateLimitIp(5, 60_000));
 
 authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   const { email, password, fullName } = c.req.valid("json");

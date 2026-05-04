@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { requireAuth } from "../middleware/auth.js";
-import { rateLimit } from "../middleware/rate-limit.js";
+import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const toolsRouter = new Hono();
 
-toolsRouter.post("/checkout/credits", requireAuth, rateLimit(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
+toolsRouter.post("/checkout/credits", requireAuth, rateLimitIp(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
   const user = c.get("user");
   const { pack } = await c.req.json();
 
@@ -41,7 +41,7 @@ toolsRouter.post("/checkout/credits", requireAuth, rateLimit(RATE_LIMITS.PAYMENT
   return c.json({ url: session.url });
 });
 
-toolsRouter.post("/checkout/subscription", requireAuth, rateLimit(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
+toolsRouter.post("/checkout/subscription", requireAuth, rateLimitIp(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
   const user = c.get("user");
   const { priceId } = await c.req.json();
 
@@ -57,7 +57,7 @@ toolsRouter.post("/checkout/subscription", requireAuth, rateLimit(RATE_LIMITS.PA
   return c.json({ url: session.url });
 });
 
-toolsRouter.post("/portal", requireAuth, rateLimit(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
+toolsRouter.post("/portal", requireAuth, rateLimitIp(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
   const user = c.get("user");
   const { stripeCustomerId } = await c.req.json();
 

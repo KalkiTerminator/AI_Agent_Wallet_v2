@@ -5,7 +5,7 @@ import { aiTools, toolUsages, toolAccess } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { requireVerified } from "../middleware/require-verified.js";
-import { rateLimit } from "../middleware/rate-limit.js";
+import { rateLimitIp, rateLimitUser } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
 import { validateOutboundUrl, SSRFError } from "../services/url-guard.js";
@@ -24,7 +24,7 @@ function sanitizeToolForClient(tool: typeof aiTools.$inferSelect) {
 }
 
 // GET /api/tools — list approved active tools
-toolsRouter.get("/", rateLimit(RATE_LIMITS.READS), async (c) => {
+toolsRouter.get("/", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const tools = await db
     .select()
     .from(aiTools)
@@ -33,14 +33,14 @@ toolsRouter.get("/", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // GET /api/tools/mine — tools created by current user
-toolsRouter.get("/mine", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
+toolsRouter.get("/mine", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
   const tools = await db.select().from(aiTools).where(and(eq(aiTools.createdByUserId, user.userId), isNull(aiTools.deletedAt)));
   return c.json({ data: tools });
 });
 
 // GET /api/tools/usage — paginated usage history for current user
-toolsRouter.get("/usage", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
+toolsRouter.get("/usage", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
   const page = Math.max(1, Number(c.req.query("page") ?? 1));
   const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") ?? 20)));
@@ -63,7 +63,7 @@ toolsRouter.get("/usage", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) =
 });
 
 // POST /api/tools — submit a new tool (approval required)
-toolsRouter.post("/", requireAuth, rateLimit(RATE_LIMITS.READS), async (c) => {
+toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
   const body = await c.req.json<{
     name: string;
@@ -234,7 +234,7 @@ toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"),
 });
 
 // GET /api/tools/:id
-toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
+toolsRouter.get("/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");
   const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
@@ -242,7 +242,7 @@ toolsRouter.get("/:id", rateLimit(RATE_LIMITS.READS), async (c) => {
 });
 
 // POST /api/tools/:id/execute — two-phase commit execution
-toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimit(RATE_LIMITS.TOOL_EXECUTE), async (c) => {
+toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimitIp(RATE_LIMITS.TOOL_EXECUTE), rateLimitUser(30, 60_000), async (c) => {
   const toolId = c.req.param("id");
   const user = c.get("user");
   const body = await c.req.json();
