@@ -5,9 +5,16 @@ import { logger } from "../lib/logger.js";
 
 let redis: Redis | null = null;
 let rateLimiters: Map<string, Ratelimit> = new Map();
+let warnedAboutMissingRedis = false;
 
 function getRedis(): Redis | null {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) return null;
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    if (!warnedAboutMissingRedis) {
+      logger.warn("Upstash Redis not configured — rate limiting disabled");
+      warnedAboutMissingRedis = true;
+    }
+    return null;
+  }
   if (!redis) {
     redis = new Redis({
       url: process.env.UPSTASH_REDIS_REST_URL,
@@ -20,14 +27,15 @@ function getRedis(): Redis | null {
 function getLimiter(key: string, maxRequests: number, windowMs: number): Ratelimit | null {
   const r = getRedis();
   if (!r) return null;
-  const cacheKey = `${key}:${maxRequests}:${windowMs}`;
+  const windowSec = Math.max(1, Math.floor(windowMs / 1000));
+  const cacheKey = `${key}:${maxRequests}:${windowSec}`;
   if (!rateLimiters.has(cacheKey)) {
     rateLimiters.set(
       cacheKey,
       new Ratelimit({
         redis: r,
-        limiter: Ratelimit.slidingWindow(maxRequests, `${Math.floor(windowMs / 1000)} s`),
-        prefix: `autohub:rl:${key}`,
+        limiter: Ratelimit.slidingWindow(maxRequests, `${windowSec} s`),
+        prefix: `autohub:rl:${key}:${maxRequests}:${windowSec}`,
       })
     );
   }
@@ -42,7 +50,6 @@ export function rateLimitIp(maxRequests: number, windowMs = 60_000) {
     const limiter = getLimiter("ip", maxRequests, windowMs);
 
     if (!limiter) {
-      logger.warn("Upstash Redis not configured, rate limiting disabled");
       await next();
       return;
     }
@@ -61,8 +68,8 @@ export function rateLimitIp(maxRequests: number, windowMs = 60_000) {
 
 export function rateLimitUser(maxRequests: number, windowMs = 60_000) {
   return createMiddleware(async (c, next) => {
-    const payload = (c as any).get("jwtPayload");
-    if (!payload?.sub) {
+    const user = c.get("user" as any);
+    if (!user?.userId) {
       await next();
       return;
     }
@@ -73,7 +80,7 @@ export function rateLimitUser(maxRequests: number, windowMs = 60_000) {
       return;
     }
 
-    const { success, limit, remaining, reset } = await limiter.limit(payload.sub);
+    const { success, limit, remaining, reset } = await limiter.limit(user.userId);
     c.header("X-RateLimit-Limit", String(limit));
     c.header("X-RateLimit-Remaining", String(remaining));
     c.header("X-RateLimit-Reset", String(reset));

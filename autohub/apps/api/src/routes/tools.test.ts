@@ -22,7 +22,29 @@ vi.mock("../services/tool-execution.js", () => ({
 
 // Mock rate-limit to be a passthrough
 vi.mock("../middleware/rate-limit.js", () => ({
-  rateLimit: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  rateLimitIp: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  rateLimitUser: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+}));
+
+// Mock auth middleware: requireAuth sets user on context, requireVerified passes through
+vi.mock("../middleware/auth.js", () => ({
+  requireAuth: async (c: any, next: () => Promise<void>) => {
+    const authHeader = c.req.header("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    c.set("user", { userId: "user-1", email: "user@example.com", role: "user", jti: "test-jti", emailVerified: true, mfaEnabled: false });
+    await next();
+  },
+  requireRole: (role: string) => async (c: any, next: () => Promise<void>) => {
+    const user = c.get("user");
+    if (!user || user.role !== role) return c.json({ error: "Forbidden" }, 403);
+    await next();
+  },
+}));
+
+vi.mock("../middleware/require-verified.js", () => ({
+  requireVerified: async (_c: unknown, next: () => Promise<void>) => await next(),
 }));
 
 const { toolsRouter } = await import("./tools.js");
@@ -37,7 +59,10 @@ process.env.NEXTAUTH_SECRET = "test-secret";
 
 // Create a signed JWT for authenticated requests
 function makeToken(role: "user" | "admin" = "user") {
-  return jwt.sign({ userId: "user-1", email: "user@example.com", role }, "test-secret");
+  return jwt.sign(
+    { userId: "user-1", email: "user@example.com", role, jti: "test-jti", emailVerified: true, mfaEnabled: role === "admin" },
+    "test-secret"
+  );
 }
 
 function authHeader(role: "user" | "admin" = "user") {

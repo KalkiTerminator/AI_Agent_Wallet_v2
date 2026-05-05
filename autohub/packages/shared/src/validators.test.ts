@@ -16,7 +16,7 @@ describe("RegisterSchema", () => {
   it("accepts a valid payload", () => {
     const result = RegisterSchema.safeParse({
       email: "user@example.com",
-      password: "password123",
+      password: "Str0ng!Password",
       fullName: "Alice",
     });
     expect(result.success).toBe(true);
@@ -25,21 +25,21 @@ describe("RegisterSchema", () => {
   it("accepts payload without fullName", () => {
     const result = RegisterSchema.safeParse({
       email: "user@example.com",
-      password: "password123",
+      password: "Str0ng!Password",
     });
     expect(result.success).toBe(true);
   });
 
   it("rejects invalid email", () => {
-    const result = RegisterSchema.safeParse({ email: "not-an-email", password: "password123" });
+    const result = RegisterSchema.safeParse({ email: "not-an-email", password: "Str0ng!Password" });
     expect(result.success).toBe(false);
   });
 
-  it("rejects password shorter than 8 characters", () => {
-    const result = RegisterSchema.safeParse({ email: "user@example.com", password: "short" });
+  it("rejects password shorter than 12 characters", () => {
+    const result = RegisterSchema.safeParse({ email: "user@example.com", password: "Short1!" });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe("Password must be at least 8 characters");
+      expect(result.error.issues[0].message).toBe("Password must be at least 12 characters");
     }
   });
 });

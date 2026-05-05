@@ -30,6 +30,11 @@ vi.mock("jsonwebtoken", () => ({
   },
 }));
 
+vi.mock("../services/email.js", () => ({
+  sendVerificationEmail: vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Import AFTER mocks are set up
 const { authRouter } = await import("./auth.js");
 
@@ -71,6 +76,8 @@ function chainInsert(returning: unknown[]) {
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.NEXTAUTH_SECRET = "test-secret";
+  // Default: all inserts (e.g. audit logs, sessions) resolve to empty array
+  mockInsert.mockReturnValue({ values: vi.fn().mockResolvedValue([]) });
 });
 
 // ---------------------------------------------------------------------------
@@ -86,20 +93,17 @@ describe("POST /api/auth/register", () => {
     };
     mockSelect.mockReturnValue(selectChain);
 
-    // Three inserts: users, userRoles, credits
-    const insertChain = {
-      values: vi.fn().mockReturnThis(),
-      returning: vi
-        .fn()
-        .mockResolvedValueOnce([{ id: "user-1", email: "user@example.com", fullName: "Alice" }])
-        .mockResolvedValueOnce([{ userId: "user-1", role: "user" }])
-        .mockResolvedValueOnce([{ userId: "user-1", currentCredits: 10 }]),
-    };
-    mockInsert.mockReturnValue(insertChain);
+    // First insert (users) chains .returning(); others (userRoles, credits, auditLogs, sessions, emailVerificationTokens)
+    // resolve on .values() — handled by the beforeEach default; override only the first call
+    mockInsert.mockReturnValueOnce({
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([{ id: "user-1", email: "user@example.com", fullName: "Alice" }]),
+      }),
+    });
 
     const res = await req("POST", "/api/auth/register", {
       email: "user@example.com",
-      password: "password123",
+      password: "Str0ng!Password",
       fullName: "Alice",
     });
 
@@ -119,7 +123,7 @@ describe("POST /api/auth/register", () => {
 
     const res = await req("POST", "/api/auth/register", {
       email: "user@example.com",
-      password: "password123",
+      password: "Str0ng!Password",
     });
 
     expect(res.status).toBe(409);
@@ -130,7 +134,7 @@ describe("POST /api/auth/register", () => {
   it("returns 400 for invalid email", async () => {
     const res = await req("POST", "/api/auth/register", {
       email: "not-an-email",
-      password: "password123",
+      password: "Str0ng!Password",
     });
     expect(res.status).toBe(400);
   });
