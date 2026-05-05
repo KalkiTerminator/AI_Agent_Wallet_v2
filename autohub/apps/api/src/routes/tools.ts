@@ -95,8 +95,8 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
     }
   }
 
-  const webhookUrlEncrypted = body.webhookUrl ? encrypt(body.webhookUrl) : null;
-  const authHeaderEncrypted = body.authHeader ? encrypt(body.authHeader) : null;
+  const webhookUrlEncrypted = body.webhookUrl ? await encrypt(body.webhookUrl) : null;
+  const authHeaderEncrypted = body.authHeader ? await encrypt(body.authHeader) : null;
 
   const [tool] = await db
     .insert(aiTools)

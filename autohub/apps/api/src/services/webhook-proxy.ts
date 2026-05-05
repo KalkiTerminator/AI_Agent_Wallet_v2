@@ -32,12 +32,12 @@ export class WebhookProxyService {
     }
     // Resolve webhook URL — prefer encrypted field, fall back to legacy plain field
     const rawWebhookUrl = tool.webhookUrlEncrypted
-      ? decrypt(tool.webhookUrlEncrypted)
+      ? await decrypt(tool.webhookUrlEncrypted)
       : tool.webhookUrl;
     if (!rawWebhookUrl) throw Object.assign(new Error("Tool has no webhook configured"), { status: 400 });
 
     // Resolve optional auth header
-    const authHeader = tool.authHeaderEncrypted ? decrypt(tool.authHeaderEncrypted) : null;
+    const authHeader = tool.authHeaderEncrypted ? await decrypt(tool.authHeaderEncrypted) : null;
 
     // Attach resolved values so private methods can use them without re-decrypting
     const resolvedTool = { ...tool, _resolvedWebhookUrl: rawWebhookUrl, _resolvedAuthHeader: authHeader };

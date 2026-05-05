@@ -372,7 +372,7 @@ authRouter.post("/mfa/setup", requireAuth, async (c) => {
 
   const secret = totpGenerateSecret();
   const otpauthUrl = totpGenerateURI({ issuer: "AutoHub", label: dbUser.email, secret });
-  const encryptedSecret = encrypt(secret);
+  const encryptedSecret = await encrypt(secret);
 
   await db.update(users)
     .set({ mfaSecretEncrypted: encryptedSecret, mfaEnabled: false })
@@ -392,7 +392,7 @@ authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
     .from(users).where(eq(users.id, user.userId)).limit(1);
   if (!dbUser?.mfaSecretEncrypted) return c.json({ error: "MFA setup not started" }, 400);
 
-  const secret = decrypt(dbUser.mfaSecretEncrypted);
+  const secret = await decrypt(dbUser.mfaSecretEncrypted);
   const result = totpVerifySync({ token: body.code, secret, epochTolerance: 1 });
   if (!result.valid) return c.json({ error: "Invalid TOTP code" }, 400);
 
@@ -428,7 +428,7 @@ authRouter.post("/mfa/disable", requireAuth, async (c) => {
 
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
-    const secret = decrypt(dbUser.mfaSecretEncrypted);
+    const secret = await decrypt(dbUser.mfaSecretEncrypted);
     verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
   }
 
@@ -482,7 +482,7 @@ authRouter.post("/mfa/challenge", async (c) => {
 
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
-    const secret = decrypt(dbUser.mfaSecretEncrypted);
+    const secret = await decrypt(dbUser.mfaSecretEncrypted);
     verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
   }
   if (!verified) {
