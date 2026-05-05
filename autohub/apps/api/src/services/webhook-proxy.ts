@@ -21,6 +21,7 @@ interface CircuitState {
   openedAt: number | null;
   status: "closed" | "open" | "half-open";
   cachedError: string | null;
+  probeInFlight: boolean;
 }
 
 const circuits = new Map<string, CircuitState>();
@@ -31,13 +32,13 @@ const OPEN_DURATION_MS = 2 * 60 * 1000;   // 2 minutes before half-open
 
 function getCircuit(toolId: string): CircuitState {
   if (!circuits.has(toolId)) {
-    circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null });
+    circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null, probeInFlight: false });
   }
   return circuits.get(toolId)!;
 }
 
 function recordSuccess(toolId: string): void {
-  circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null });
+  circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null, probeInFlight: false });
 }
 
 function recordFailure(toolId: string, error: string): "open" | "closed" {
@@ -57,8 +58,10 @@ function recordFailure(toolId: string, error: string): "open" | "closed" {
   if (c.failures >= FAILURE_THRESHOLD) {
     c.status = "open";
     c.openedAt = now;
+    c.probeInFlight = false; // reset so next half-open window allows a probe
     return "open";
   }
+  c.probeInFlight = false;
   return "closed";
 }
 
@@ -69,11 +72,14 @@ function shouldAllow(toolId: string): "allow" | "reject" {
     const now = Date.now();
     if (c.openedAt && now - c.openedAt > OPEN_DURATION_MS) {
       c.status = "half-open";
-      return "allow"; // probe request
+      // fall through to half-open handling
+    } else {
+      return "reject";
     }
-    return "reject";
   }
-  // half-open: allow one probe
+  // half-open: allow exactly one probe at a time
+  if (c.probeInFlight) return "reject";
+  c.probeInFlight = true;
   return "allow";
 }
 
