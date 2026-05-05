@@ -1,45 +1,72 @@
-import { Ratelimit } from "@upstash/ratelimit";
-import { Redis } from "@upstash/redis";
+import Redis from "ioredis";
 import { createMiddleware } from "hono/factory";
 import { logger } from "../lib/logger.js";
 
 let redis: Redis | null = null;
-let rateLimiters: Map<string, Ratelimit> = new Map();
 let warnedAboutMissingRedis = false;
 
 function getRedis(): Redis | null {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+  const url = process.env.REDIS_URL ?? process.env.REDIS_PRIVATE_URL;
+  if (!url) {
     if (!warnedAboutMissingRedis) {
-      logger.warn("Upstash Redis not configured — rate limiting disabled");
+      logger.warn("REDIS_URL not configured — rate limiting disabled");
       warnedAboutMissingRedis = true;
     }
     return null;
   }
   if (!redis) {
-    redis = new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
+    redis = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    redis.on("error", (err) => logger.warn({ err }, "Redis connection error"));
   }
   return redis;
 }
 
-function getLimiter(key: string, maxRequests: number, windowMs: number): Ratelimit | null {
+// Sliding window via Lua — atomic, no race conditions
+const SLIDING_WINDOW_SCRIPT = `
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local expires = now + window
+
+redis.call('ZREMRANGEBYSCORE', key, '-inf', now - window)
+local count = redis.call('ZCARD', key)
+if count < limit then
+  redis.call('ZADD', key, now, now .. '-' .. math.random(1, 1000000))
+  redis.call('PEXPIREAT', key, expires)
+  return {1, limit, limit - count - 1, expires}
+else
+  local oldest = redis.call('ZRANGE', key, 0, 0, 'WITHSCORES')
+  local resetAt = oldest[2] and (tonumber(oldest[2]) + window) or expires
+  return {0, limit, 0, resetAt}
+end
+`.trim();
+
+async function checkLimit(
+  prefix: string,
+  identifier: string,
+  maxRequests: number,
+  windowMs: number
+): Promise<{ success: boolean; limit: number; remaining: number; reset: number } | null> {
   const r = getRedis();
   if (!r) return null;
-  const windowSec = Math.max(1, Math.floor(windowMs / 1000));
-  const cacheKey = `${key}:${maxRequests}:${windowSec}`;
-  if (!rateLimiters.has(cacheKey)) {
-    rateLimiters.set(
-      cacheKey,
-      new Ratelimit({
-        redis: r,
-        limiter: Ratelimit.slidingWindow(maxRequests, `${windowSec} s`),
-        prefix: `autohub:rl:${key}:${maxRequests}:${windowSec}`,
-      })
-    );
+
+  const key = `autohub:rl:${prefix}:${maxRequests}:${windowMs}:${identifier}`;
+  const now = Date.now();
+
+  try {
+    const result = await r.eval(SLIDING_WINDOW_SCRIPT, 1, key, now, windowMs, maxRequests) as number[];
+    return {
+      success: result[0] === 1,
+      limit: result[1],
+      remaining: result[2],
+      reset: result[3],
+    };
+  } catch (err) {
+    // Fail open — never block requests due to Redis errors
+    logger.warn({ err }, "Rate limit check failed, failing open");
+    return null;
   }
-  return rateLimiters.get(cacheKey)!;
 }
 
 export function rateLimitIp(maxRequests: number, windowMs = 60_000) {
@@ -47,20 +74,15 @@ export function rateLimitIp(maxRequests: number, windowMs = 60_000) {
     const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim()
       ?? c.req.header("x-real-ip")
       ?? "unknown";
-    const limiter = getLimiter("ip", maxRequests, windowMs);
 
-    if (!limiter) {
-      await next();
-      return;
-    }
-
-    const { success, limit, remaining, reset } = await limiter.limit(ip);
-    c.header("X-RateLimit-Limit", String(limit));
-    c.header("X-RateLimit-Remaining", String(remaining));
-    c.header("X-RateLimit-Reset", String(reset));
-
-    if (!success) {
-      return c.json({ error: "Too many requests" }, 429);
+    const result = await checkLimit("ip", ip, maxRequests, windowMs);
+    if (result) {
+      c.header("X-RateLimit-Limit", String(result.limit));
+      c.header("X-RateLimit-Remaining", String(result.remaining));
+      c.header("X-RateLimit-Reset", String(result.reset));
+      if (!result.success) {
+        return c.json({ error: "Too many requests" }, 429);
+      }
     }
     await next();
   });
@@ -73,20 +95,15 @@ export function rateLimitUser(maxRequests: number, windowMs = 60_000) {
       await next();
       return;
     }
-    const limiter = getLimiter("user", maxRequests, windowMs);
 
-    if (!limiter) {
-      await next();
-      return;
-    }
-
-    const { success, limit, remaining, reset } = await limiter.limit(user.userId);
-    c.header("X-RateLimit-Limit", String(limit));
-    c.header("X-RateLimit-Remaining", String(remaining));
-    c.header("X-RateLimit-Reset", String(reset));
-
-    if (!success) {
-      return c.json({ error: "Too many requests" }, 429);
+    const result = await checkLimit("user", user.userId, maxRequests, windowMs);
+    if (result) {
+      c.header("X-RateLimit-Limit", String(result.limit));
+      c.header("X-RateLimit-Remaining", String(result.remaining));
+      c.header("X-RateLimit-Reset", String(result.reset));
+      if (!result.success) {
+        return c.json({ error: "Too many requests" }, 429);
+      }
     }
     await next();
   });
