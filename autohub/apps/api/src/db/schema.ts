@@ -244,3 +244,46 @@ export const mfaBackupCodes = pgTable("mfa_backup_codes", {
 }, (t) => [
   index("mfa_backup_codes_user_id_idx").on(t.userId),
 ]);
+
+// ─── consent_logs ────────────────────────────────────────────
+export const consentLogs = pgTable("consent_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  consentType: text("consent_type", { enum: ["terms", "privacy", "marketing", "data_processing"] }).notNull(),
+  consentVersion: text("consent_version").notNull(),
+  granted: boolean("granted").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("consent_logs_user_id_idx").on(t.userId),
+]);
+
+// ─── data_subject_requests ───────────────────────────────────────
+export const dataSubjectRequests = pgTable("data_subject_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestType: text("request_type", { enum: ["access", "erasure", "portability", "rectification"] }).notNull(),
+  status: text("status", { enum: ["pending", "in_progress", "completed", "rejected"] }).notNull().default("pending"),
+  requestNotes: text("request_notes"),
+  resolutionNotes: text("resolution_notes"),
+  dueDate: timestamp("due_date", { withTimezone: true }).notNull(),
+  resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("dsar_status_due_idx").on(t.status, t.dueDate),
+]);
+
+// ─── webhook_domains ─────────────────────────────────────────────────
+export const webhookDomains = pgTable("webhook_domains", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  domain: text("domain").notNull().unique(),
+  ownerUserId: uuid("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  verificationToken: text("verification_token").notNull(),
+  status: text("status", { enum: ["pending", "verified", "rejected"] }).notNull().default("pending"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("webhook_domains_owner_idx").on(t.ownerUserId),
+]);

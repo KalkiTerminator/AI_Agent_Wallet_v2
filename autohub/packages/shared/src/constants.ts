@@ -55,9 +55,13 @@ export const SUBSCRIPTION_TIERS = {
   ENTERPRISE: { name: "Enterprise", price: -1, credits: -1 },
 } as const;
 
+export const CURRENT_POLICY_VERSION = "2026-05-01";
+
 // Rate limits (requests per minute)
 export const RATE_LIMITS = {
   TOOL_EXECUTE: 20,
   READS: 60,
   PAYMENT_ACTIONS: 5,
+  COMPLIANCE: 10,
+  SANDBOX: 10,
 } as const;

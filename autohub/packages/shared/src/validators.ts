@@ -71,6 +71,7 @@ export const CreateToolSchema = z.object({
       placeholder: z.string().default(""),
       required: z.boolean().default(false),
       options: z.array(z.string()).optional(),
+      isPhi: z.boolean().optional(),
     }).strict()
   ),
   outputType: z.string().optional(),
@@ -90,3 +91,22 @@ export const InviteOrgMemberSchema = z.object({
   email: z.string().email(),
   role: z.enum(["admin", "member"]),
 });
+
+export const ConsentSchema = z.object({
+  consentType: z.enum(["terms", "privacy", "marketing", "data_processing"]),
+  granted: z.boolean(),
+}).strict();
+
+export const DsarSchema = z.object({
+  requestType: z.enum(["access", "erasure", "portability", "rectification"]),
+  notes: z.string().max(2000).optional(),
+}).strict();
+
+export const ReviewChecklistSchema = z.object({
+  webhookDomainVerified: z.literal(true),
+  noPersonalDataCollected: z.literal(true),
+  outputTypeAppropriate: z.literal(true),
+  creditCostReasonable: z.literal(true),
+  descriptionAccurate: z.literal(true),
+  noMaliciousInputFields: z.literal(true),
+}).strict();

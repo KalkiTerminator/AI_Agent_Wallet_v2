@@ -50,6 +50,13 @@
       "when": 1777971690823,
       "tag": "0006_circuit_breaker_tool_status",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1746489600000,
+      "tag": "0007_compliance",
+      "breakpoints": true
     }
   ]
 }
