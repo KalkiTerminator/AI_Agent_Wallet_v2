@@ -8,7 +8,10 @@ const transport: pino.TransportSingleOptions | undefined = isDev
   : betterStackToken
   ? {
       target: "@logtail/pino",
-      options: { sourceToken: betterStackToken },
+      options: {
+        sourceToken: betterStackToken,
+        endpoint: "https://s2416489.eu-fsn-3.betterstackdata.com",
+      },
     }
   : undefined;
 
