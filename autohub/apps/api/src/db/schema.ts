@@ -3,7 +3,7 @@ import {
   uuid, text, integer, boolean, timestamp, jsonb, unique, index, primaryKey,
 } from "drizzle-orm/pg-core";
 
-export const toolStatusEnum = pgEnum("tool_status", ["draft", "pending_approval", "approved", "rejected", "archived"]);
+export const toolStatusEnum = pgEnum("tool_status", ["draft", "pending_approval", "approved", "rejected", "archived", "degraded", "broken"]);
 export const toolVisibilityEnum = pgEnum("tool_visibility", ["private", "public"]);
 export const executionModeEnum = pgEnum("execution_mode", ["sync", "async"]);
 export const executionStatusEnum = pgEnum("execution_status", ["pending", "success", "failed", "timeout"]);

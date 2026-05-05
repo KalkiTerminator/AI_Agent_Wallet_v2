@@ -13,6 +13,70 @@ export function generateSigningSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+// ── Circuit Breaker ───────────────────────────────────────────────────────────
+
+interface CircuitState {
+  failures: number;
+  firstFailureAt: number;
+  openedAt: number | null;
+  status: "closed" | "open" | "half-open";
+  cachedError: string | null;
+}
+
+const circuits = new Map<string, CircuitState>();
+
+const FAILURE_THRESHOLD = 5;
+const FAILURE_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+const OPEN_DURATION_MS = 2 * 60 * 1000;   // 2 minutes before half-open
+
+function getCircuit(toolId: string): CircuitState {
+  if (!circuits.has(toolId)) {
+    circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null });
+  }
+  return circuits.get(toolId)!;
+}
+
+function recordSuccess(toolId: string): void {
+  circuits.set(toolId, { failures: 0, firstFailureAt: 0, openedAt: null, status: "closed", cachedError: null });
+}
+
+function recordFailure(toolId: string, error: string): "open" | "closed" {
+  const c = getCircuit(toolId);
+  const now = Date.now();
+
+  // Reset failure window if first failure was too long ago
+  if (c.firstFailureAt && now - c.firstFailureAt > FAILURE_WINDOW_MS) {
+    c.failures = 0;
+    c.firstFailureAt = 0;
+  }
+
+  if (!c.firstFailureAt) c.firstFailureAt = now;
+  c.failures++;
+  c.cachedError = error;
+
+  if (c.failures >= FAILURE_THRESHOLD) {
+    c.status = "open";
+    c.openedAt = now;
+    return "open";
+  }
+  return "closed";
+}
+
+function shouldAllow(toolId: string): "allow" | "reject" {
+  const c = getCircuit(toolId);
+  if (c.status === "closed") return "allow";
+  if (c.status === "open") {
+    const now = Date.now();
+    if (c.openedAt && now - c.openedAt > OPEN_DURATION_MS) {
+      c.status = "half-open";
+      return "allow"; // probe request
+    }
+    return "reject";
+  }
+  // half-open: allow one probe
+  return "allow";
+}
+
 interface ProxyParams {
   toolId: string;
   userId: string;
@@ -73,6 +137,16 @@ export class WebhookProxyService {
   }) {
     const webhookUrl = tool._resolvedWebhookUrl;
 
+    // Circuit breaker check
+    const circuitDecision = shouldAllow(tool.id);
+    if (circuitDecision === "reject") {
+      return {
+        executionId: execution.id,
+        status: "failed" as const,
+        error: `Tool circuit breaker open: ${getCircuit(tool.id).cachedError ?? "repeated failures"}`,
+      };
+    }
+
     // SSRF guard: validate + pin resolved IP on every call to defeat DNS rebinding
     let resolvedIp: string;
     try {
@@ -123,10 +197,33 @@ export class WebhookProxyService {
       }).finally(() => clearTimeout(timer));
 
       if (!res.ok) {
+        const errMsg = `Webhook returned ${res.status}`;
+        const circuitStatus = recordFailure(tool.id, errMsg);
+        if (circuitStatus === "open") {
+          await db.update(aiTools).set({ toolStatus: "degraded" }).where(eq(aiTools.id, tool.id));
+          await logAuditEvent({
+            userId: execution.userId,
+            action: "tool.circuit_breaker.opened",
+            resourceType: "tool",
+            resourceId: tool.id,
+            metadata: { reason: errMsg },
+          });
+        }
+        // Mark tool broken on auth failures
+        if (res.status === 401 || res.status === 403 || res.status === 407) {
+          await db.update(aiTools).set({ toolStatus: "broken" }).where(eq(aiTools.id, tool.id));
+          await logAuditEvent({
+            userId: execution.userId,
+            action: "tool.webhook.auth_failed",
+            resourceType: "tool",
+            resourceId: tool.id,
+            metadata: { statusCode: res.status },
+          });
+        }
         await db.update(executions)
-          .set({ status: "failed", error: `Webhook returned ${res.status}`, completedAt: new Date() })
+          .set({ status: "failed", error: errMsg, completedAt: new Date() })
           .where(eq(executions.id, execution.id));
-        return { executionId: execution.id, status: "failed" as const, error: `Webhook returned ${res.status}` };
+        return { executionId: execution.id, status: "failed" as const, error: errMsg };
       }
 
       // Cap response body at 1MB to prevent memory exhaustion
@@ -159,12 +256,26 @@ export class WebhookProxyService {
         metadata: { executionId: execution.id, creditsDebited, status: "success" },
       });
 
+      recordSuccess(tool.id);
+
       return { executionId: execution.id, status: "success" as const, output: responsePayload, creditsDebited };
     } catch (err) {
       const isTimeout = (err as Error).name === "AbortError";
+      const errMsg = isTimeout ? "Webhook timed out" : (err as Error).message;
+      const circuitStatus = recordFailure(tool.id, errMsg);
+      if (circuitStatus === "open") {
+        await db.update(aiTools).set({ toolStatus: "degraded" }).where(eq(aiTools.id, tool.id));
+        await logAuditEvent({
+          userId: execution.userId,
+          action: "tool.circuit_breaker.opened",
+          resourceType: "tool",
+          resourceId: tool.id,
+          metadata: { reason: errMsg },
+        });
+      }
       const status = isTimeout ? "timeout" as const : "failed" as const;
       await db.update(executions)
-        .set({ status, error: (err as Error).message, completedAt: new Date() })
+        .set({ status, error: errMsg, completedAt: new Date() })
         .where(eq(executions.id, execution.id));
       return { executionId: execution.id, status };
     }
