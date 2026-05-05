@@ -23,6 +23,7 @@ const authRouter = new Hono();
 authRouter.use("/login", rateLimitIp(10, 60_000));
 authRouter.use("/register", rateLimitIp(10, 60_000));
 authRouter.use("/reset/request", rateLimitIp(5, 60_000));
+authRouter.use("/reset/confirm", rateLimitIp(10, 60_000));
 
 authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   const { email, password, fullName } = c.req.valid("json");
