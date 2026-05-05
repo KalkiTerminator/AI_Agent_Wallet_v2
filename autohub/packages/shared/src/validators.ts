@@ -41,21 +41,21 @@ export const RegisterSchema = z.object({
     }
   }),
   fullName: z.string().min(1, "Name is required").optional(),
-});
+}).strict();
 
 export const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1, "Password is required"),
-});
+}).strict();
 
 export const ResetPasswordSchema = z.object({
   email: z.string().email(),
-});
+}).strict();
 
 export const ResetConfirmSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8),
-});
+}).strict();
 
 export const CreateToolSchema = z.object({
   name: z.string().min(1).max(100),
@@ -71,16 +71,16 @@ export const CreateToolSchema = z.object({
       placeholder: z.string().default(""),
       required: z.boolean().default(false),
       options: z.array(z.string()).optional(),
-    })
+    }).strict()
   ),
   outputType: z.string().optional(),
   webhookTimeout: z.number().int().min(1).max(300).default(30),
   webhookRetries: z.number().int().min(0).max(5).default(2),
-});
+}).strict();
 
 export const PurchaseCreditsSchema = z.object({
   pack: z.enum(["100", "500", "1000"]),
-});
+}).strict();
 
 export const CreateOrgSchema = z.object({
   name: z.string().min(1).max(100),

@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/node";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { bodyLimit } from "hono/body-limit";
 import { logger } from "./lib/logger.js";
 import { randomUUID } from "crypto";
 import { toolsRouter } from "./routes/tools.js";
@@ -34,6 +35,11 @@ app.use(
     credentials: true,
   })
 );
+
+// Tight limit on auth routes — prevents large payload DoS on bcrypt
+app.use("/api/auth/*", bodyLimit({ maxSize: 5 * 1024 }));
+// Default limit for all other routes
+app.use("*", bodyLimit({ maxSize: 100 * 1024 }));
 
 app.use("*", async (c, next) => {
   const start = Date.now();
