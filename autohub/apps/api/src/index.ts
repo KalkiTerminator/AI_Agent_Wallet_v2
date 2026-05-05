@@ -36,11 +36,6 @@ app.use(
   })
 );
 
-// Tight limit on auth routes — prevents large payload DoS on bcrypt
-app.use("/api/auth/*", bodyLimit({ maxSize: 5 * 1024 }));
-// Default limit for all other routes
-app.use("*", bodyLimit({ maxSize: 100 * 1024 }));
-
 app.use("*", async (c, next) => {
   const start = Date.now();
   await next();
@@ -49,6 +44,12 @@ app.use("*", async (c, next) => {
   const level = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
   logger[level]({ method: c.req.method, url: c.req.path, status, durationMs: ms, requestId: (c.get as any)("requestId") }, "http");
 });
+
+// Body limits after logger so 413 rejections still produce access log entries.
+// Auth routes capped at 5 KB — prevents large-payload DoS amplification through bcrypt.
+// Default 100 KB for all other routes.
+app.use("/api/auth/*", bodyLimit({ maxSize: 5 * 1024 }));
+app.use("*", bodyLimit({ maxSize: 100 * 1024 }));
 app.use("*", securityHeaders());
 
 // Inject requestId into every request context for audit trail correlation
