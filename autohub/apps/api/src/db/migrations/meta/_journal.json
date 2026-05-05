@@ -43,6 +43,13 @@
       "when": 1746403200000,
       "tag": "0005_phase2_security",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777971690823,
+      "tag": "0006_circuit_breaker_tool_status",
+      "breakpoints": true
     }
   ]
 }
