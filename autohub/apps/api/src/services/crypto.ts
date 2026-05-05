@@ -20,10 +20,13 @@ export class EnvKeyProvider implements KeyProvider {
   }
 }
 
-// Stub — swap in a real KMS client when SOC 2 / key management is required.
+/**
+ * @internal Placeholder — not production-ready. Replace with a real AWS/GCP KMS client
+ * before using. Throws on every call to prevent accidental wiring as default provider.
+ */
 export class KMSKeyProvider implements KeyProvider {
   async getKey(): Promise<Buffer> {
-    throw new Error("KMSKeyProvider not implemented. Configure AWS KMS or GCP KMS credentials.");
+    throw new Error("KMSKeyProvider is not implemented. Wire a real AWS KMS or GCP KMS client.");
   }
 }
 
