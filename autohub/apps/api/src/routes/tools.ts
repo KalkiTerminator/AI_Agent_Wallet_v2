@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { resolveTxt } from "dns/promises";
 import { db } from "../db/index.js";
-import { aiTools, toolUsages, toolAccess } from "../db/schema.js";
+import { aiTools, toolUsages, toolAccess, webhookDomains } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { requireVerified } from "../middleware/require-verified.js";
@@ -10,6 +12,7 @@ import { RATE_LIMITS } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
 import { validateOutboundUrl, SSRFError } from "../services/url-guard.js";
 import { encrypt, maskUrl } from "../services/crypto.js";
+import { logAuditEvent } from "../services/audit.js";
 
 const toolsRouter = new Hono();
 
@@ -142,6 +145,17 @@ toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c
   if (tool.createdByUserId !== user.userId && user.role !== "admin") {
     return c.json({ error: "Forbidden" }, 403);
   }
+  // Gate: non-admin tool creators must have a verified webhook domain
+  if (user.role !== "admin" && tool.webhookUrlEncrypted) {
+    const verifiedDomain = await db
+      .select()
+      .from(webhookDomains)
+      .where(and(eq(webhookDomains.ownerUserId, user.userId), eq(webhookDomains.status, "verified")))
+      .limit(1);
+    if (verifiedDomain.length === 0) {
+      return c.json({ error: "You must verify a webhook domain before submitting a tool for approval. Use POST /api/tools/domains to register your domain." }, 400);
+    }
+  }
   if (tool.toolStatus !== "draft" && tool.toolStatus !== "rejected") {
     return c.json({ error: "Tool must be in draft or rejected state" }, 400);
   }
@@ -231,6 +245,108 @@ toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"),
   }
   await db.delete(toolAccess).where(and(eq(toolAccess.toolId, id), eq(toolAccess.userId, userId)));
   return c.json({ data: { success: true } });
+});
+
+// POST /api/tools/domains — register a webhook domain
+toolsRouter.post("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const { webhookUrl } = await c.req.json<{ webhookUrl: string }>();
+
+  let parsed: URL;
+  try {
+    parsed = new URL(webhookUrl);
+  } catch {
+    return c.json({ error: "Invalid URL" }, 400);
+  }
+
+  // Extract root domain (e.g. api.mycompany.com → mycompany.com)
+  const parts = parsed.hostname.split(".");
+  const rootDomain = parts.slice(-2).join(".");
+  const token = randomBytes(32).toString("hex");
+
+  const [existing] = await db
+    .select()
+    .from(webhookDomains)
+    .where(and(eq(webhookDomains.domain, rootDomain), eq(webhookDomains.ownerUserId, user.userId)))
+    .limit(1);
+
+  if (existing?.status === "verified") {
+    return c.json({ data: { domain: rootDomain, status: "verified", alreadyVerified: true } });
+  }
+
+  const [record] = await db
+    .insert(webhookDomains)
+    .values({ domain: rootDomain, ownerUserId: user.userId, verificationToken: token })
+    .onConflictDoUpdate({
+      target: webhookDomains.domain,
+      set: { verificationToken: token, status: "pending" },
+    })
+    .returning();
+
+  return c.json({
+    data: {
+      id: record.id,
+      domain: rootDomain,
+      status: "pending",
+      dnsRecord: `_autohub.${rootDomain} TXT "autohub-verify=${record.verificationToken}"`,
+      instructions: `Add the TXT record above to your DNS, then call POST /api/tools/domains/${record.id}/verify`,
+    },
+  }, 201);
+});
+
+// POST /api/tools/domains/:id/verify — trigger DNS TXT check
+toolsRouter.post("/domains/:id/verify", requireAuth, rateLimitIp(5, 60_000), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+
+  const [record] = await db
+    .select()
+    .from(webhookDomains)
+    .where(and(eq(webhookDomains.id, id), eq(webhookDomains.ownerUserId, user.userId)))
+    .limit(1);
+
+  if (!record) return c.json({ error: "Domain not found" }, 404);
+  if (record.status === "verified") return c.json({ data: { status: "verified" } });
+
+  // Reject if older than 7 days
+  const ageDays = (Date.now() - record.createdAt.getTime()) / (1000 * 60 * 60 * 24);
+  if (ageDays > 7) {
+    await db.update(webhookDomains).set({ status: "rejected" }).where(eq(webhookDomains.id, id));
+    return c.json({ error: "Verification window expired. Please re-register the domain." }, 400);
+  }
+
+  let txtRecords: string[][];
+  try {
+    txtRecords = await resolveTxt(`_autohub.${record.domain}`);
+  } catch {
+    return c.json({ error: "DNS lookup failed. Ensure the TXT record has propagated (may take up to 48 hours)." }, 400);
+  }
+
+  const flat = txtRecords.flat();
+  const expected = `autohub-verify=${record.verificationToken}`;
+  const verified = flat.some((r) => r === expected);
+
+  if (!verified) {
+    return c.json({ error: `TXT record not found. Expected: ${expected}` }, 400);
+  }
+
+  await db.update(webhookDomains)
+    .set({ status: "verified", verifiedAt: new Date() })
+    .where(eq(webhookDomains.id, id));
+
+  await logAuditEvent({ userId: user.userId, action: "tool.domain_verified", resourceType: "webhook_domain", resourceId: id });
+
+  return c.json({ data: { status: "verified", domain: record.domain } });
+});
+
+// GET /api/tools/domains — list current user's registered domains
+toolsRouter.get("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select()
+    .from(webhookDomains)
+    .where(eq(webhookDomains.ownerUserId, user.userId));
+  return c.json({ data: rows });
 });
 
 // GET /api/tools/:id
