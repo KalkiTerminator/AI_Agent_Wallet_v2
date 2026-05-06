@@ -80,7 +80,7 @@ export const toolUsages = pgTable("tool_usages", {
   inputData: jsonb("input_data").notNull().default({}),
   outputData: jsonb("output_data"),
   creditsUsed: integer("credits_used").notNull(),
-  status: text("status", { enum: ["pending", "success", "failed", "refunded"] }).notNull().default("pending"),
+  status: text("status", { enum: ["pending", "success", "failed", "refunded", "sandbox"] }).notNull().default("pending"),
   errorMessage: text("error_message"),
   ipAddress: text("ip_address"),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
