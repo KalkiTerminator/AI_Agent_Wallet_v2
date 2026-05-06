@@ -248,7 +248,7 @@ toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"),
 });
 
 // POST /api/tools/domains — register a webhook domain
-toolsRouter.post("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+toolsRouter.post("/domains", requireAuth, rateLimitIp(5, 60_000), async (c) => {
   const user = c.get("user");
   const { webhookUrl } = await c.req.json<{ webhookUrl: string }>();
 
@@ -272,6 +272,17 @@ toolsRouter.post("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async 
 
   if (existing?.status === "verified") {
     return c.json({ data: { domain: rootDomain, status: "verified", alreadyVerified: true } });
+  }
+
+  // Check if another user already owns this domain
+  const [crossUserRecord] = await db
+    .select({ ownerUserId: webhookDomains.ownerUserId })
+    .from(webhookDomains)
+    .where(eq(webhookDomains.domain, rootDomain))
+    .limit(1);
+
+  if (crossUserRecord && crossUserRecord.ownerUserId !== user.userId) {
+    return c.json({ error: "This domain is already registered by another user." }, 409);
   }
 
   const [record] = await db
