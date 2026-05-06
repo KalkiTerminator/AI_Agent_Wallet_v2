@@ -3,6 +3,9 @@ import { requireAuth } from "../middleware/auth.js";
 import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import Stripe from "stripe";
+import { db } from "../db/index.js";
+import { users } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 const toolsRouter = new Hono();
@@ -59,10 +62,18 @@ toolsRouter.post("/checkout/subscription", requireAuth, rateLimitIp(RATE_LIMITS.
 
 toolsRouter.post("/portal", requireAuth, rateLimitIp(RATE_LIMITS.PAYMENT_ACTIONS), async (c) => {
   const user = c.get("user");
-  const { stripeCustomerId } = await c.req.json();
+
+  const [userRow] = await db.select({ stripeCustomerId: users.stripeCustomerId })
+    .from(users)
+    .where(eq(users.id, user.userId))
+    .limit(1);
+
+  if (!userRow?.stripeCustomerId) {
+    return c.json({ error: "No billing account found. Please contact support." }, 400);
+  }
 
   const session = await stripe.billingPortal.sessions.create({
-    customer: stripeCustomerId,
+    customer: userRow.stripeCustomerId,
     return_url: `${process.env.AUTOHUB_WEB_URL}/settings`,
   });
 
