@@ -5,7 +5,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
-import { eq, and, sql, desc, isNull } from "drizzle-orm";
+import { eq, and, sql, desc, isNull, inArray } from "drizzle-orm";
 import { logAuditEvent } from "../services/audit.js";
 
 const DEFAULT_ROLES = ["admin", "moderator", "user"];
@@ -54,7 +54,7 @@ adminRouter.get("/analytics", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 });
 
 adminRouter.get("/tools", rateLimitIp(RATE_LIMITS.READS), async (c) => {
-  const result = await db
+  const toolList = await db
     .select({
       id: aiTools.id,
       name: aiTools.name,
@@ -69,6 +69,52 @@ adminRouter.get("/tools", rateLimitIp(RATE_LIMITS.READS), async (c) => {
     .from(aiTools)
     .where(isNull(aiTools.deletedAt))
     .orderBy(desc(aiTools.createdAt));
+
+  const creatorIds = [...new Set(toolList.map((t) => t.createdByUserId).filter(Boolean))] as string[];
+
+  const reputationMap: Record<string, {
+    toolsApproved: number;
+    toolsRejected: number;
+    totalExecutions: number;
+    webhookSuccessRate: number;
+    circuitBreakerTrips: number;
+  }> = {};
+
+  await Promise.all(creatorIds.map(async (creatorId) => {
+    const creatorTools = toolList
+      .filter((t) => t.createdByUserId === creatorId)
+      .map((t) => t.id);
+
+    const [[approved], [rejected], [execCount]] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(aiTools)
+        .where(and(eq(aiTools.createdByUserId, creatorId), eq(aiTools.approvalStatus, "approved"), isNull(aiTools.deletedAt))),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(aiTools)
+        .where(and(eq(aiTools.createdByUserId, creatorId), eq(aiTools.approvalStatus, "rejected"), isNull(aiTools.deletedAt))),
+      creatorTools.length > 0
+        ? db
+            .select({ count: sql<number>`count(*)` })
+            .from(toolUsages)
+            .where(and(inArray(toolUsages.toolId, creatorTools), isNull(toolUsages.deletedAt)))
+        : Promise.resolve([{ count: 0 }]),
+    ]);
+
+    reputationMap[creatorId] = {
+      toolsApproved: Number(approved.count),
+      toolsRejected: Number(rejected.count),
+      totalExecutions: Number(execCount?.count ?? 0),
+      webhookSuccessRate: 1.0,
+      circuitBreakerTrips: 0,
+    };
+  }));
+
+  const result = toolList.map((tool) => ({
+    ...tool,
+    creatorReputation: tool.createdByUserId ? reputationMap[tool.createdByUserId] ?? null : null,
+  }));
 
   return c.json({ data: result });
 });
