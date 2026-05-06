@@ -1,9 +1,11 @@
 import { Hono } from "hono";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
-  users, aiTools, executions, toolUsages, payments,
+  users, aiTools, executions, toolUsages, payments, consentLogs, dataSubjectRequests,
 } from "../db/schema.js";
+import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION } from "@autohub/shared";
+import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
 import { revokeAllSessions } from "./auth.js";
@@ -85,19 +87,69 @@ accountRouter.delete("/", requireAuth, async (c) => {
   return c.json({ data: { deleted: true } });
 });
 
-// POST /api/account/erasure-request — formal GDPR Art. 17 request
-accountRouter.post("/erasure-request", requireAuth, async (c) => {
+// POST /api/account/consent — log a consent event (GDPR Art. 7)
+accountRouter.post("/consent", requireAuth, zValidator("json", ConsentSchema), async (c) => {
   const user = c.get("user");
+  const { consentType, granted } = c.req.valid("json");
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
-  const requestId = (c.get as any)("requestId");
+  const ua = c.req.header("user-agent") ?? null;
+
+  await db.insert(consentLogs).values({
+    userId: user.userId,
+    consentType,
+    consentVersion: CURRENT_POLICY_VERSION,
+    granted,
+    ipAddress: ip,
+    userAgent: ua,
+  });
+
+  await logAuditEvent({ userId: user.userId, action: `gdpr.consent.${consentType}.${granted ? "granted" : "withdrawn"}`, ip });
+
+  return c.json({ data: { recorded: true } });
+});
+
+// GET /api/account/consent — return user's consent history
+accountRouter.get("/consent", requireAuth, async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select()
+    .from(consentLogs)
+    .where(eq(consentLogs.userId, user.userId))
+    .orderBy(desc(consentLogs.createdAt));
+  return c.json({ data: rows });
+});
+
+// POST /api/account/dsar — submit a Data Subject Access Request (GDPR Art. 15/17/20/16)
+accountRouter.post("/dsar", requireAuth, zValidator("json", DsarSchema), async (c) => {
+  const user = c.get("user");
+  const { requestType, requestNotes } = c.req.valid("json");
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
+
+  const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+
+  const [dsar] = await db.insert(dataSubjectRequests).values({
+    userId: user.userId,
+    requestType,
+    requestNotes: requestNotes ?? null,
+    dueDate,
+  }).returning();
+
   await logAuditEvent({
     userId: user.userId,
-    action: "gdpr.erasure_requested",
+    action: "gdpr.dsar_submitted",
+    resourceType: "dsar",
+    resourceId: dsar.id,
+    metadata: { requestType },
     ip,
-    requestId,
-    metadata: { note: "Formal Art. 17 request — requires manual admin review within 30 days" },
   });
-  return c.json({ data: { message: "Erasure request received. We will process it within 30 days." } });
+
+  return c.json({ data: { id: dsar.id, dueDate: dueDate.toISOString(), message: "Request received. We will respond within 30 days." } }, 201);
+});
+
+// 308 redirect: old erasure-request route → new dsar route (preserves POST method)
+accountRouter.post("/erasure-request", async (c) => {
+  c.header("Location", "/api/account/dsar");
+  return c.body(null, 308);
 });
 
 export { accountRouter };

@@ -4,8 +4,8 @@ import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHmac } from "crypto";
 import { eq, isNull, and } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions, mfaBackupCodes } from "../db/schema.js";
-import { RegisterSchema, LoginSchema } from "@autohub/shared";
+import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions, mfaBackupCodes, consentLogs } from "../db/schema.js";
+import { RegisterSchema, LoginSchema, CURRENT_POLICY_VERSION } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
 import { logAuditEvent } from "../services/audit.js";
@@ -40,6 +40,13 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
 
   await db.insert(userRoles).values({ userId: user.id, role: "user" });
   await db.insert(credits).values({ userId: user.id, currentCredits: 10 }); // 10 free credits
+
+  // Log initial consent (GDPR Art. 7) — signup implies acceptance of current policy version
+  await db.insert(consentLogs).values([
+    { userId: user.id, consentType: "terms", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
+    { userId: user.id, consentType: "privacy", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
+    { userId: user.id, consentType: "data_processing", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
+  ]).catch((err) => console.error("[CONSENT] Failed to log signup consent:", err));
 
   await logAuditEvent({ userId: user.id, action: "auth.signup", ip, requestId });
 
