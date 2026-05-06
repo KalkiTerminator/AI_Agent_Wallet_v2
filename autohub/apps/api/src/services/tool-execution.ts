@@ -11,6 +11,23 @@ interface ExecuteParams {
   ip?: string;
 }
 
+export function redactPhiFields(
+  inputs: Record<string, unknown>,
+  inputFields: Array<{ name: string; isPhi?: boolean }>,
+): Record<string, unknown> {
+  if (!inputFields.length) return inputs;
+  const phiFieldNames = new Set(
+    inputFields.filter((f) => f.isPhi).map((f) => f.name)
+  );
+  if (!phiFieldNames.size) return inputs;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(inputs)) {
+    result[key] = phiFieldNames.has(key) ? "[PHI REDACTED]" : value;
+  }
+  return result;
+}
+
 export class ToolExecutionService {
   static async execute({ toolId, userId, userRole, inputs, ip }: ExecuteParams) {
     // Load tool
@@ -21,6 +38,11 @@ export class ToolExecutionService {
     }
 
     const isAdmin = userRole === "admin";
+
+    const safeInputs = redactPhiFields(
+      inputs,
+      (tool.inputFields as Array<{ name: string; isPhi?: boolean }>) ?? [],
+    );
 
     if (!isAdmin) {
       // Check credits (atomic check)
@@ -36,7 +58,7 @@ export class ToolExecutionService {
       [usage] = await db.insert(toolUsages).values({
         userId,
         toolId,
-        inputData: inputs,
+        inputData: safeInputs,
         creditsUsed: 0,
         status: "pending",
         ipAddress: ip,
@@ -58,7 +80,7 @@ export class ToolExecutionService {
         return tx.insert(toolUsages).values({
           userId,
           toolId,
-          inputData: inputs,
+          inputData: safeInputs,
           creditsUsed: tool.creditCost,
           status: "pending",
           ipAddress: ip,
