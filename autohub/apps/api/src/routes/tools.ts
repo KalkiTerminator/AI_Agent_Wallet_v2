@@ -8,7 +8,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { requireVerified } from "../middleware/require-verified.js";
 import { rateLimitIp, rateLimitUser } from "../middleware/rate-limit.js";
-import { RATE_LIMITS } from "@autohub/shared";
+import { RATE_LIMITS, ReviewChecklistSchema } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
 import { validateOutboundUrl, SSRFError } from "../services/url-guard.js";
 import { encrypt, maskUrl } from "../services/crypto.js";
@@ -170,29 +170,69 @@ toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c
 // PATCH /api/tools/:id/status — admin approves/rejects/archives
 toolsRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (c) => {
   const { id } = c.req.param();
-  const body = await c.req.json<{ status: "approved" | "rejected" | "archived"; reason?: string }>();
+  const body = await c.req.json<{
+    status: "approved" | "rejected" | "archived";
+    reason?: string;
+    reviewChecklist?: Record<string, boolean>;
+  }>();
+
   if (!["approved", "rejected", "archived"].includes(body.status)) {
     return c.json({ error: "Invalid status" }, 400);
   }
-  const updates: Partial<typeof aiTools.$inferInsert> = {
-    toolStatus: body.status,
-    updatedAt: new Date(),
-  };
+
+  // Require completed checklist to approve
   if (body.status === "approved") {
+    const parsed = ReviewChecklistSchema.safeParse(body.reviewChecklist);
+    if (!parsed.success) {
+      return c.json({ error: "All review checklist items must be checked before approving", details: parsed.error.flatten() }, 400);
+    }
+  }
+
+  const updates: Partial<typeof aiTools.$inferInsert> = { updatedAt: new Date() };
+  if (body.status === "approved") {
+    updates.toolStatus = "approved";
     updates.approvalStatus = "approved";
     updates.isActive = true;
     updates.rejectionReason = null;
   }
   if (body.status === "rejected") {
+    updates.toolStatus = "rejected";
     updates.approvalStatus = "rejected";
     updates.isActive = false;
     updates.rejectionReason = body.reason ?? null;
   }
   if (body.status === "archived") {
+    updates.toolStatus = "archived";
     updates.isActive = false;
   }
-  const [updated] = await db.update(aiTools).set(updates).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).returning();
+
+  const [updated] = await db
+    .update(aiTools)
+    .set(updates)
+    .where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)))
+    .returning();
   if (!updated) return c.json({ error: "Tool not found" }, 404);
+
+  const action =
+    body.status === "approved"
+      ? "admin.tool.approved"
+      : body.status === "rejected"
+      ? "admin.tool.rejected"
+      : "admin.tool.archived";
+
+  await logAuditEvent({
+    userId: c.get("user").userId,
+    action,
+    resourceType: "tool",
+    resourceId: id,
+    metadata: {
+      status: body.status,
+      ...(body.reviewChecklist && { checklist: JSON.stringify(body.reviewChecklist) }),
+      ...(body.reason && { reason: body.reason }),
+    },
+    ip: c.req.header("x-forwarded-for") ?? null,
+  });
+
   return c.json({ data: updated });
 });
 
