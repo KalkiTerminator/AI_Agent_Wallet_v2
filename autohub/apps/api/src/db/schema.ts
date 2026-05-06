@@ -20,6 +20,7 @@ export const users = pgTable("users", {
   mfaSecretEncrypted: text("mfa_secret_encrypted"),
   mfaEnabled: boolean("mfa_enabled").notNull().default(false),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -139,6 +140,18 @@ export const subscriptions = pgTable("subscriptions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.userId)]);
+
+// ─── subscription_invoices ──────────────────────────────────
+export const subscriptionInvoices = pgTable("subscription_invoices", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  stripeInvoiceId: text("stripe_invoice_id").notNull().unique(),
+  amountCents: integer("amount_cents").notNull(),
+  creditsGranted: integer("credits_granted").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("subscription_invoices_user_id_idx").on(t.userId),
+]);
 
 // ─── webhook_execution_log ──────────────────────────────
 export const webhookExecutionLog = pgTable("webhook_execution_log", {
