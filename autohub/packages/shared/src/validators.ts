@@ -99,7 +99,7 @@ export const ConsentSchema = z.object({
 
 export const DsarSchema = z.object({
   requestType: z.enum(["access", "erasure", "portability", "rectification"]),
-  notes: z.string().max(2000).optional(),
+  requestNotes: z.string().max(2000).optional(),
 }).strict();
 
 export const ReviewChecklistSchema = z.object({
