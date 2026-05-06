@@ -4,9 +4,10 @@ import { db } from "../db/index.js";
 import {
   users, aiTools, executions, toolUsages, payments, consentLogs, dataSubjectRequests,
 } from "../db/schema.js";
-import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION } from "@autohub/shared";
+import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION, RATE_LIMITS } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
 import { requireAuth } from "../middleware/auth.js";
+import { rateLimitIp } from "../middleware/rate-limit.js";
 import { logAuditEvent } from "../services/audit.js";
 import { revokeAllSessions } from "./auth.js";
 
@@ -88,7 +89,7 @@ accountRouter.delete("/", requireAuth, async (c) => {
 });
 
 // POST /api/account/consent — log a consent event (GDPR Art. 7)
-accountRouter.post("/consent", requireAuth, zValidator("json", ConsentSchema), async (c) => {
+accountRouter.post("/consent", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), zValidator("json", ConsentSchema), async (c) => {
   const user = c.get("user");
   const { consentType, granted } = c.req.valid("json");
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
@@ -109,18 +110,22 @@ accountRouter.post("/consent", requireAuth, zValidator("json", ConsentSchema), a
 });
 
 // GET /api/account/consent — return user's consent history
-accountRouter.get("/consent", requireAuth, async (c) => {
+accountRouter.get("/consent", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), async (c) => {
   const user = c.get("user");
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
   const rows = await db
     .select()
     .from(consentLogs)
     .where(eq(consentLogs.userId, user.userId))
     .orderBy(desc(consentLogs.createdAt));
+
+  await logAuditEvent({ userId: user.userId, action: "gdpr.consent_viewed", ip });
+
   return c.json({ data: rows });
 });
 
 // POST /api/account/dsar — submit a Data Subject Access Request (GDPR Art. 15/17/20/16)
-accountRouter.post("/dsar", requireAuth, zValidator("json", DsarSchema), async (c) => {
+accountRouter.post("/dsar", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), zValidator("json", DsarSchema), async (c) => {
   const user = c.get("user");
   const { requestType, requestNotes } = c.req.valid("json");
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
