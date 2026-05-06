@@ -101,7 +101,9 @@ export const auditLogs = pgTable("audit_logs", {
   metadata: jsonb("metadata"),
   ipAddress: text("ip_address"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("audit_logs_created_at_idx").on(t.createdAt),
+]);
 
 // ─── user_favorites ─────────────────────────────────────
 export const userFavorites = pgTable("user_favorites", {

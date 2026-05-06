@@ -31,6 +31,14 @@ complianceRouter.use("*", async (c, next) => {
 complianceRouter.get("/audit-log", rateLimitIp(RATE_LIMITS.COMPLIANCE), async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
+
+  if (from && isNaN(new Date(from).getTime())) {
+    return c.json({ error: "Invalid 'from' date format. Use ISO 8601." }, 400);
+  }
+  if (to && isNaN(new Date(to).getTime())) {
+    return c.json({ error: "Invalid 'to' date format. Use ISO 8601." }, 400);
+  }
+
   const page = Math.max(1, Number(c.req.query("page") ?? 1));
   const limit = Math.min(200, Math.max(1, Number(c.req.query("limit") ?? 50)));
   const offset = (page - 1) * limit;
