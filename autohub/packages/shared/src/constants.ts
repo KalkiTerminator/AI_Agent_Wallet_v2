@@ -57,6 +57,8 @@ export const SUBSCRIPTION_TIERS = {
 
 export const CURRENT_POLICY_VERSION = "2026-05-01";
 
+export const SUBSCRIPTION_MONTHLY_CREDITS = 500;
+
 // Rate limits (requests per minute)
 export const RATE_LIMITS = {
   TOOL_EXECUTE: 20,
