@@ -360,6 +360,27 @@ toolsRouter.get("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (
   return c.json({ data: rows });
 });
 
+// POST /api/tools/:id/sandbox — sandbox execution (no credits, creator/admin only)
+toolsRouter.post("/:id/sandbox", requireAuth, requireVerified, rateLimitUser(RATE_LIMITS.SANDBOX, 60_000), async (c) => {
+  const toolId = c.req.param("id");
+  const user = c.get("user");
+  const body = await c.req.json();
+  const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? undefined;
+
+  try {
+    const result = await ToolExecutionService.executeSandbox({
+      toolId,
+      userId: user.userId,
+      userRole: user.role,
+      inputs: body.inputs ?? {},
+      ip,
+    });
+    return c.json({ data: result });
+  } catch (err: any) {
+    return c.json({ error: err.message }, err.status ?? 500);
+  }
+});
+
 // GET /api/tools/:id
 toolsRouter.get("/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");

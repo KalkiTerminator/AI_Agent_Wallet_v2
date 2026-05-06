@@ -17,6 +17,7 @@ vi.mock("../db/index.js", () => ({
 vi.mock("../services/tool-execution.js", () => ({
   ToolExecutionService: {
     execute: vi.fn(),
+    executeSandbox: vi.fn(),
   },
 }));
 
@@ -258,5 +259,24 @@ describe("POST /api/tools/:id/execute", () => {
       inputs: { prompt: "hello" },
       ip: undefined,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/tools/:id/sandbox
+// ---------------------------------------------------------------------------
+describe("POST /:id/sandbox", () => {
+  it("returns 403 when user is not the tool creator", async () => {
+    vi.mocked(ToolExecutionService.executeSandbox).mockRejectedValueOnce(
+      Object.assign(new Error("Forbidden"), { status: 403 })
+    );
+
+    const res = await req(
+      "POST",
+      "/api/tools/tool-not-mine/sandbox",
+      { inputs: {} },
+      authHeader()
+    );
+    expect(res.status).toBe(403);
   });
 });

@@ -98,6 +98,69 @@ export class ToolExecutionService {
     return result;
   }
 
+  static async executeSandbox({
+    toolId,
+    userId,
+    userRole,
+    inputs,
+    ip,
+  }: {
+    toolId: string;
+    userId: string;
+    userRole: string;
+    inputs: Record<string, unknown>;
+    ip?: string;
+  }) {
+    const [tool] = await db
+      .select()
+      .from(aiTools)
+      .where(and(eq(aiTools.id, toolId), isNull(aiTools.deletedAt)))
+      .limit(1);
+    if (!tool) throw Object.assign(new Error("Tool not found"), { status: 404 });
+
+    const isAdmin = userRole === "admin";
+    const isOwner = tool.createdByUserId === userId;
+    if (!isAdmin && !isOwner) throw Object.assign(new Error("Forbidden"), { status: 403 });
+
+    const [usage] = await db.insert(toolUsages).values({
+      userId,
+      toolId,
+      inputData: inputs,
+      creditsUsed: 0,
+      status: "sandbox" as any,
+      ipAddress: ip,
+    }).returning();
+
+    if (!tool.webhookUrlEncrypted && !tool.webhookUrl) {
+      await db.update(toolUsages).set({ completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
+      return { usageId: usage.id, status: "sandbox", creditsDeducted: 0 };
+    }
+
+    const { decrypt } = await import("./crypto.js");
+    const webhookUrl = tool.webhookUrlEncrypted
+      ? await decrypt(tool.webhookUrlEncrypted)
+      : tool.webhookUrl!;
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), tool.webhookTimeout * 1000);
+      const res = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Autohub-Sandbox": "true" },
+        body: JSON.stringify({ usageId: usage.id, inputs }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeout));
+
+      const outputData = res.ok ? await res.json().catch(() => null) : null;
+      await db.update(toolUsages).set({ outputData, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
+      return { usageId: usage.id, status: "sandbox", output: outputData, creditsDeducted: 0 };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await db.update(toolUsages).set({ errorMessage: msg, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
+      return { usageId: usage.id, status: "sandbox", error: msg, creditsDeducted: 0 };
+    }
+  }
+
   private static async callWebhookWithRetry({
     tool,
     usage,
