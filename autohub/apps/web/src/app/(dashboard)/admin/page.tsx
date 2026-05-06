@@ -19,7 +19,7 @@ interface AdminAnalytics {
   totalRevenueCents: number;
 }
 
-type AdminTab = "users" | "tools" | "approvals";
+type AdminTab = "users" | "tools" | "approvals" | "compliance";
 
 function AdminPageInner() {
   const { data: session, status } = useSession();
@@ -28,7 +28,7 @@ function AdminPageInner() {
 
   const rawTab = searchParams.get("tab");
   const activeTab: AdminTab =
-    rawTab === "users" || rawTab === "tools" || rawTab === "approvals"
+    rawTab === "users" || rawTab === "tools" || rawTab === "approvals" || rawTab === "compliance"
       ? rawTab
       : "approvals";
 
@@ -113,6 +113,9 @@ function AdminPageInner() {
           <TabsTrigger value="approvals" className="text-xs">Tool Approvals</TabsTrigger>
           <TabsTrigger value="tools" className="text-xs">Manage Tools</TabsTrigger>
           <TabsTrigger value="users" className="text-xs">User Management</TabsTrigger>
+          <TabsTrigger value="compliance" className="text-xs" onClick={() => router.push("/admin/compliance")}>
+            Compliance
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="approvals" className="mt-4">
