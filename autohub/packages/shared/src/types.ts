@@ -18,6 +18,7 @@ export interface AITool {
   createdByUserId?: string | null;
   visibility?: ToolVisibility;
   toolStatus?: ToolStatus;
+  rejectionReason?: string | null;
   enabled?: boolean;
   executionMode?: ExecutionMode;
   // Note: visibility/toolStatus/enabled/executionMode are notNull in DB but optional here
