@@ -280,3 +280,107 @@ describe("POST /:id/sandbox", () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe("PATCH /api/tools/:id", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns 403 when non-owner tries to edit", async () => {
+    (db.select as any).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{
+            id: "tool-1",
+            createdByUserId: "user-2",
+            toolStatus: "approved",
+            approvalStatus: "approved",
+          }]),
+        }),
+      }),
+    });
+
+    const res = await app.request("/api/tools/tool-1", {
+      method: "PATCH",
+      headers: { Authorization: "Bearer token", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Updated Name" }),
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("resets approved tool to draft on edit", async () => {
+    (db.select as any).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{
+            id: "tool-1",
+            createdByUserId: "user-1",
+            toolStatus: "approved",
+            approvalStatus: "approved",
+            webhookUrlEncrypted: null,
+            authHeaderEncrypted: null,
+          }]),
+        }),
+      }),
+    });
+    (db.update as any).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([{ id: "tool-1", toolStatus: "draft" }]),
+        }),
+      }),
+    });
+
+    const res = await app.request("/api/tools/tool-1", {
+      method: "PATCH",
+      headers: { Authorization: "Bearer token", "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Updated Name" }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.data.toolStatus).toBe("draft");
+  });
+});
+
+describe("DELETE /api/tools/:id", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("soft-deletes a tool owned by the current user", async () => {
+    (db.select as any).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: "tool-1", createdByUserId: "user-1" }]),
+        }),
+      }),
+    });
+    (db.update as any).mockReturnValue({
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+
+    const res = await app.request("/api/tools/tool-1", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer token" },
+    });
+
+    expect(res.status).toBe(204);
+  });
+
+  it("returns 403 when non-owner tries to delete", async () => {
+    (db.select as any).mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue([{ id: "tool-1", createdByUserId: "user-2" }]),
+        }),
+      }),
+    });
+
+    const res = await app.request("/api/tools/tool-1", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer token" },
+    });
+
+    expect(res.status).toBe(403);
+  });
+});

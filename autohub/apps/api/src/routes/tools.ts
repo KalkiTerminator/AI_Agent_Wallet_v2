@@ -421,6 +421,85 @@ toolsRouter.post("/:id/sandbox", requireAuth, requireVerified, rateLimitUser(RAT
   }
 });
 
+// PATCH /api/tools/:id — edit tool (owner or admin only), resets to draft
+toolsRouter.patch("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const body = await c.req.json<{
+    name?: string;
+    description?: string;
+    category?: string;
+    creditCost?: number;
+    inputFields?: unknown[];
+    iconUrl?: string;
+    webhookUrl?: string;
+    authHeader?: string;
+    outputType?: string;
+    webhookTimeout?: number;
+    webhookRetries?: number;
+  }>();
+
+  if (body.webhookUrl) {
+    try {
+      await validateOutboundUrl(body.webhookUrl);
+    } catch (err) {
+      if (err instanceof SSRFError) return c.json({ error: `Invalid webhook URL: ${err.message}` }, 400);
+      return c.json({ error: "Webhook URL validation failed" }, 400);
+    }
+  }
+
+  const updates: Partial<typeof aiTools.$inferInsert> = { updatedAt: new Date() };
+  if (body.name !== undefined) updates.name = body.name.trim();
+  if (body.description !== undefined) updates.description = body.description.trim();
+  if (body.category !== undefined) updates.category = body.category;
+  if (body.creditCost !== undefined) updates.creditCost = body.creditCost;
+  if (body.inputFields !== undefined) updates.inputFields = body.inputFields;
+  if (body.iconUrl !== undefined) updates.iconUrl = body.iconUrl;
+  if (body.outputType !== undefined) updates.outputType = body.outputType;
+  if (body.webhookTimeout !== undefined) updates.webhookTimeout = body.webhookTimeout;
+  if (body.webhookRetries !== undefined) updates.webhookRetries = body.webhookRetries;
+  if (body.webhookUrl !== undefined) updates.webhookUrlEncrypted = await encrypt(body.webhookUrl);
+  if (body.authHeader !== undefined) updates.authHeaderEncrypted = await encrypt(body.authHeader);
+
+  // Reset to draft if currently approved or pending_approval
+  if (tool.toolStatus === "approved" || tool.toolStatus === "pending_approval") {
+    updates.toolStatus = "draft";
+    updates.approvalStatus = "pending";
+    updates.isActive = false;
+  }
+
+  const [updated] = await db
+    .update(aiTools)
+    .set(updates)
+    .where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)))
+    .returning();
+
+  return c.json({ data: sanitizeToolForClient(updated) });
+});
+
+// DELETE /api/tools/:id — soft-delete (owner or admin only)
+toolsRouter.delete("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  await db.update(aiTools).set({ deletedAt: new Date() }).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)));
+
+  return new Response(null, { status: 204 });
+});
+
 // GET /api/tools/:id
 toolsRouter.get("/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const id = c.req.param("id");
