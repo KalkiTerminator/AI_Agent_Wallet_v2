@@ -40,15 +40,97 @@ adminRouter.get("/users", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 });
 
 adminRouter.get("/analytics", rateLimitIp(RATE_LIMITS.READS), async (c) => {
-  const [usageCount] = await db.select({ count: sql<number>`count(*)` }).from(toolUsages);
-  const [userCount] = await db.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt));
-  const [revenue] = await db.select({ total: sql<number>`sum(amount)` }).from(payments).where(eq(payments.status, "completed"));
+  const rangeParam = c.req.query("range") ?? "30d";
+  if (!["7d", "30d", "90d"].includes(rangeParam)) {
+    return c.json({ error: "Invalid range. Use 7d, 30d, or 90d." }, 400);
+  }
+
+  const intervalMap: Record<string, string> = {
+    "7d": "7 days",
+    "30d": "30 days",
+    "90d": "90 days",
+  };
+  const interval = intervalMap[rangeParam];
+
+  const [
+    [usageCount],
+    [userCount],
+    [revenue],
+    dailyRevenueRows,
+    dailySignupRows,
+    dailyExecutionRows,
+    activeSubRows,
+    topToolRows,
+  ] = await Promise.all([
+    // Summary: lifetime totals
+    db.select({ count: sql<number>`count(*)` }).from(toolUsages),
+    db.select({ count: sql<number>`count(*)` }).from(users).where(isNull(users.deletedAt)),
+    db.select({ total: sql<number>`sum(amount)` }).from(payments).where(eq(payments.status, "completed")),
+
+    // Daily revenue (zero-filled)
+    db.execute(sql`
+      SELECT d::date AS date, COALESCE(SUM(p.amount), 0)::int AS "amountCents"
+      FROM generate_series(now() - ${interval}::interval, now(), '1 day'::interval) AS d
+      LEFT JOIN payments p ON date_trunc('day', p.created_at) = date_trunc('day', d)
+        AND p.status = 'completed'
+      GROUP BY d::date ORDER BY d::date
+    `),
+
+    // Daily signups (zero-filled)
+    db.execute(sql`
+      SELECT d::date AS date, COUNT(u.id)::int AS count
+      FROM generate_series(now() - ${interval}::interval, now(), '1 day'::interval) AS d
+      LEFT JOIN users u ON date_trunc('day', u.created_at) = date_trunc('day', d)
+        AND u.deleted_at IS NULL
+      GROUP BY d::date ORDER BY d::date
+    `),
+
+    // Daily executions (zero-filled)
+    db.execute(sql`
+      SELECT d::date AS date, COUNT(tu.id)::int AS count
+      FROM generate_series(now() - ${interval}::interval, now(), '1 day'::interval) AS d
+      LEFT JOIN tool_usages tu ON date_trunc('day', tu.created_at) = date_trunc('day', d)
+        AND tu.deleted_at IS NULL
+      GROUP BY d::date ORDER BY d::date
+    `),
+
+    // Active subscriptions per day (correlated)
+    db.execute(sql`
+      SELECT d::date AS date, COUNT(s.id)::int AS count
+      FROM generate_series(now() - ${interval}::interval, now(), '1 day'::interval) AS d
+      LEFT JOIN subscriptions s
+        ON s.current_period_start <= d
+        AND s.current_period_end >= d
+        AND s.status = 'active'
+      GROUP BY d::date ORDER BY d::date
+    `),
+
+    // Top 5 tools by executions in range
+    db.execute(sql`
+      SELECT tu.tool_id AS "toolId", t.name, COUNT(*)::int AS count
+      FROM tool_usages tu
+      JOIN ai_tools t ON t.id = tu.tool_id
+      WHERE tu.deleted_at IS NULL AND tu.created_at >= now() - ${interval}::interval
+      GROUP BY tu.tool_id, t.name
+      ORDER BY count DESC
+      LIMIT 5
+    `),
+  ]);
 
   return c.json({
     data: {
-      totalUsages: usageCount.count,
-      totalUsers: userCount.count,
-      totalRevenueCents: revenue.total ?? 0,
+      summary: {
+        totalUsages: Number(usageCount.count),
+        totalUsers: Number(userCount.count),
+        totalRevenueCents: Number(revenue.total ?? 0),
+      },
+      charts: {
+        dailyRevenue: (dailyRevenueRows as any).rows ?? [],
+        dailySignups: (dailySignupRows as any).rows ?? [],
+        dailyExecutions: (dailyExecutionRows as any).rows ?? [],
+        activeSubscriptions: (activeSubRows as any).rows ?? [],
+        topTools: (topToolRows as any).rows ?? [],
+      },
     },
   });
 });
