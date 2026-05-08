@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
-  users, aiTools, executions, toolUsages, payments, consentLogs, dataSubjectRequests,
+  users, aiTools, executions, toolUsages, payments, consentLogs, dataSubjectRequests, userRoles, credits,
 } from "../db/schema.js";
 import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION, RATE_LIMITS } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
@@ -155,6 +155,66 @@ accountRouter.post("/dsar", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), zV
 accountRouter.post("/erasure-request", async (c) => {
   c.header("Location", "/api/account/dsar");
   return c.body(null, 308);
+});
+
+// GET /api/account/me — full user profile
+accountRouter.get("/me", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+
+  const [profile] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      fullName: users.fullName,
+      role: userRoles.role,
+      currentCredits: credits.currentCredits,
+      onboardedAt: users.onboardedAt,
+      emailVerifiedAt: users.emailVerifiedAt,
+      mfaEnabled: users.mfaEnabled,
+    })
+    .from(users)
+    .leftJoin(userRoles, eq(userRoles.userId, users.id))
+    .leftJoin(credits, eq(credits.userId, users.id))
+    .where(and(eq(users.id, user.userId), isNull(users.deletedAt)))
+    .limit(1);
+
+  if (!profile) return c.json({ error: "User not found" }, 404);
+
+  return c.json({
+    data: {
+      id: profile.id,
+      email: profile.email,
+      fullName: profile.fullName ?? null,
+      role: profile.role ?? "user",
+      currentCredits: profile.currentCredits ?? 0,
+      onboardedAt: profile.onboardedAt?.toISOString() ?? null,
+      emailVerifiedAt: profile.emailVerifiedAt?.toISOString() ?? null,
+      mfaEnabled: profile.mfaEnabled,
+    },
+  });
+});
+
+// POST /api/account/onboarding/complete — mark user as onboarded (idempotent)
+accountRouter.post("/onboarding/complete", requireAuth, rateLimitIp(5), async (c) => {
+  const user = c.get("user");
+
+  const [updated] = await db
+    .update(users)
+    .set({ onboardedAt: new Date() })
+    .where(and(eq(users.id, user.userId), isNull(users.onboardedAt)))
+    .returning({ onboardedAt: users.onboardedAt });
+
+  // If already set, fetch existing value
+  if (!updated) {
+    const [existing] = await db
+      .select({ onboardedAt: users.onboardedAt })
+      .from(users)
+      .where(eq(users.id, user.userId))
+      .limit(1);
+    return c.json({ data: { onboardedAt: existing?.onboardedAt?.toISOString() ?? null } });
+  }
+
+  return c.json({ data: { onboardedAt: updated.onboardedAt?.toISOString() ?? null } });
 });
 
 export { accountRouter };
