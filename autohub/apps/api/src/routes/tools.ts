@@ -299,9 +299,9 @@ toolsRouter.post("/domains", requireAuth, rateLimitIp(5, 60_000), async (c) => {
     return c.json({ error: "Invalid URL" }, 400);
   }
 
-  // Extract root domain (e.g. api.mycompany.com → mycompany.com)
-  const parts = parsed.hostname.split(".");
-  const rootDomain = parts.slice(-2).join(".");
+  // Use full hostname — users on shared cloud platforms (e.g. sarvgyan.app.n8n.cloud)
+  // own their subdomain, not the apex domain, so we register the full hostname.
+  const rootDomain = parsed.hostname;
   const token = randomBytes(32).toString("hex");
 
   const [existing] = await db
