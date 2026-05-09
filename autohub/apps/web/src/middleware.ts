@@ -15,6 +15,11 @@ export default auth((req) => {
     return NextResponse.redirect(new URL("/auth/login", req.url));
   }
 
+  // MFA step-up: session exists but TOTP not yet completed
+  if (isProtected && session?.mfaPending) {
+    return NextResponse.redirect(new URL("/auth/mfa", req.url));
+  }
+
   if (isAdmin && session?.user?.role !== "admin") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }

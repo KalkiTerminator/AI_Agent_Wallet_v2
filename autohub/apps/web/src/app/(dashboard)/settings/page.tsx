@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { apiClient } from "@/lib/api-client";
+import { useUserProfile } from "@/context/UserProfileContext";
 import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +18,7 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function SettingsPage() {
   const { data: session } = useSession();
+  const { profile, refetch: refetchProfile } = useUserProfile();
 
   // Profile section
   const [fullName, setFullName] = useState("");
@@ -50,12 +52,12 @@ export default function SettingsPage() {
     if (session?.user?.name) setFullName(session.user.name);
   }, [session?.user?.name]);
 
-  // Seed mfaEnabled from session (forwarded from JWT mfaEnabled claim)
+  // Sync mfaEnabled from live profile (not stale JWT claim)
   useEffect(() => {
-    if (session) {
-      setMfaEnabled(session.mfaEnabled ?? false);
+    if (profile) {
+      setMfaEnabled(profile.mfaEnabled);
     }
-  }, [session]);
+  }, [profile]);
 
   const fetchSubscription = useCallback(async () => {
     if (!session?.apiToken) return;
@@ -161,8 +163,8 @@ export default function SettingsPage() {
       const json = await res.json() as { data?: { backupCodes: string[] }; error?: string };
       if (!res.ok) { setMfaError(json.error ?? "Invalid code"); return; }
       setBackupCodes(json.data!.backupCodes);
-      setMfaEnabled(true);
       setMfaState("done");
+      await refetchProfile();
     } catch {
       setMfaError("Something went wrong");
     }
@@ -178,9 +180,9 @@ export default function SettingsPage() {
       });
       const json = await res.json() as { data?: unknown; error?: string };
       if (!res.ok) { setMfaError(json.error ?? "Invalid code"); return; }
-      setMfaEnabled(false);
       setMfaState("idle");
       setMfaCode("");
+      await refetchProfile();
     } catch {
       setMfaError("Something went wrong");
     }
