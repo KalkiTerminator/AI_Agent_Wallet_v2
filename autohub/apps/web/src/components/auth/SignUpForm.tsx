@@ -83,7 +83,7 @@ export function SignUpForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1">
         <Label htmlFor="fullName">Full name</Label>
         <Input
@@ -94,7 +94,7 @@ export function SignUpForm() {
           {...register("fullName")}
         />
         {errors.fullName && (
-          <p className="text-sm text-destructive">{errors.fullName.message}</p>
+          <p role="alert" data-testid="fullname-error" className="text-sm text-destructive">{errors.fullName.message}</p>
         )}
       </div>
 
@@ -108,7 +108,7 @@ export function SignUpForm() {
           {...register("email")}
         />
         {errors.email && (
-          <p className="text-sm text-destructive">{errors.email.message}</p>
+          <p role="alert" data-testid="email-error" className="text-sm text-destructive">{errors.email.message}</p>
         )}
       </div>
 
@@ -122,7 +122,7 @@ export function SignUpForm() {
           {...register("password")}
         />
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p role="alert" data-testid="password-error" className="text-sm text-destructive">{errors.password.message}</p>
         )}
       </div>
 
@@ -136,12 +136,12 @@ export function SignUpForm() {
           {...register("confirmPassword")}
         />
         {errors.confirmPassword && (
-          <p className="text-sm text-destructive">{errors.confirmPassword.message}</p>
+          <p role="alert" data-testid="confirm-password-error" className="text-sm text-destructive">{errors.confirmPassword.message}</p>
         )}
       </div>
 
       {serverError && (
-        <p className="text-sm text-destructive">{serverError}</p>
+        <p role="alert" data-testid="server-error" className="text-sm text-destructive">{serverError}</p>
       )}
 
       <Button type="submit" className="w-full" disabled={isSubmitting}>

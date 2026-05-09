@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const isDev = process.env.NODE_ENV !== "production";
+
+// Next.js dev mode requires 'unsafe-eval' for HMR and source maps.
+// Production uses strict CSP without eval.
+const scriptSrc = isDev
+  ? "'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com"
+  : "'self' 'unsafe-inline' https://js.stripe.com";
 
 // Pipedream-grade security headers for the web app
 const securityHeaders = [
@@ -35,7 +42,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' https://js.stripe.com",
+      `script-src ${scriptSrc}`,
       `connect-src 'self' ${API_URL} https://api.stripe.com https://*.sentry.io`,
       "frame-src https://js.stripe.com https://hooks.stripe.com",
       "img-src 'self' data: https:",

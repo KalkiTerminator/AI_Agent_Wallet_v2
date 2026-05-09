@@ -1,17 +1,22 @@
 import { defineConfig, devices } from "@playwright/test";
 
 /**
- * AutoHub E2E tests.
+ * AutoHub E2E + Smoke tests.
  *
- * Requires both apps running:
- *   - Next.js web:  http://localhost:3000
- *   - Hono API:     http://localhost:4000
+ * Local — requires both apps running:
+ *   Next.js web:  http://localhost:3000
+ *   Hono API:     http://localhost:4000
  *
- * In CI set:
- *   PLAYWRIGHT_BASE_URL  (defaults to http://localhost:3000)
- *   E2E_TEST_EMAIL / E2E_TEST_PASSWORD — seeded test user credentials
+ * Env vars (set in .env.e2e or CI secrets):
+ *   PLAYWRIGHT_BASE_URL   — local app base URL (default: http://localhost:3000)
+ *   SMOKE_BASE_URL        — production URL for smoke tests (default: https://www.autohub.fun)
+ *   E2E_TEST_EMAIL        — regular test user email
+ *   E2E_TEST_PASSWORD     — regular test user password
+ *   E2E_ADMIN_EMAIL       — admin test user email
+ *   E2E_ADMIN_PASSWORD    — admin test user password
  */
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const SMOKE_URL = process.env.SMOKE_BASE_URL ?? "https://www.autohub.fun";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -29,12 +34,17 @@ export default defineConfig({
   },
 
   projects: [
-    // Setup project: authenticate once and save storage state
+    // ── Setup ──────────────────────────────────────────────────────────────
     {
       name: "setup",
       testMatch: /.*\.setup\.ts/,
     },
-    // Tests that require a logged-in session
+    {
+      name: "setup-admin",
+      testMatch: /.*\.admin-setup\.ts/,
+    },
+
+    // ── Authenticated (regular user) ───────────────────────────────────────
     {
       name: "authenticated",
       dependencies: ["setup"],
@@ -42,17 +52,38 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         storageState: "e2e/.auth/user.json",
       },
-      testIgnore: /.*\.setup\.ts/,
+      testIgnore: [/.*\.setup\.ts/, /.*\.anon\.spec\.ts/, /.*\.admin\.spec\.ts/, /.*\.smoke\.spec\.ts/],
     },
-    // Tests that work without authentication (login page, signup page)
+
+    // ── Authenticated (admin user) ─────────────────────────────────────────
+    {
+      name: "authenticated-admin",
+      dependencies: ["setup-admin"],
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth/admin.json",
+      },
+      testMatch: /.*\.admin\.spec\.ts/,
+    },
+
+    // ── Unauthenticated ────────────────────────────────────────────────────
     {
       name: "unauthenticated",
       use: { ...devices["Desktop Chrome"] },
       testMatch: /.*\.anon\.spec\.ts/,
     },
+
+    // ── Production smoke ───────────────────────────────────────────────────
+    {
+      name: "smoke",
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: SMOKE_URL,
+      },
+      testMatch: /.*\.smoke\.spec\.ts/,
+    },
   ],
 
-  // Start Next.js dev server when running locally
   webServer: process.env.CI
     ? undefined
     : {

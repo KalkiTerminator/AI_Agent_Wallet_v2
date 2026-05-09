@@ -20,24 +20,29 @@ test.describe("Login page", () => {
   });
 
   test("shows validation error for invalid email", async ({ page }) => {
+    // noValidate on the form means Zod runs client-side; no type override needed
     await page.getByLabel("Email").fill("not-an-email");
     await page.getByLabel("Password").fill("password123");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(/invalid email/i)).toBeVisible();
+    await expect(page.getByTestId("email-error")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("email-error")).toContainText(/invalid email address/i);
   });
 
   test("shows validation error for short password", async ({ page }) => {
     await page.getByLabel("Email").fill("user@example.com");
     await page.getByLabel("Password").fill("short");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(/at least 8 characters/i)).toBeVisible();
+    await expect(page.getByTestId("password-error")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("password-error")).toContainText(/at least 8 characters/i);
   });
 
   test("shows server error for wrong credentials", async ({ page }) => {
-    await page.getByLabel("Email").fill("nobody@example.com");
-    await page.getByLabel("Password").fill("wrongpassword");
+    // Use credentials that don't exist — API returns 401, NextAuth sets result.error
+    await page.getByLabel("Email").fill("nobody@autohub.test");
+    await page.getByLabel("Password").fill("wrongpassword99");
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page.getByText(/invalid email or password/i)).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByTestId("server-error")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("server-error")).toContainText(/invalid email or password/i);
   });
 
   test("has link to sign-up page", async ({ page }) => {
@@ -57,18 +62,20 @@ test.describe("Sign-up page", () => {
     await expect(page.getByRole("heading", { name: /create your account/i })).toBeVisible();
     await expect(page.getByLabel("Full name")).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
-    await expect(page.getByLabel("Password")).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Confirm password")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
   });
 
   test("shows validation error when passwords do not match", async ({ page }) => {
+    // Zod refine runs client-side before any network call
     await page.getByLabel("Full name").fill("Jane Smith");
     await page.getByLabel("Email").fill("jane@example.com");
-    await page.getByLabel("Password").fill("password123");
+    await page.getByLabel("Password", { exact: true }).fill("password123");
     await page.getByLabel("Confirm password").fill("different999");
     await page.getByRole("button", { name: "Create account" }).click();
-    await expect(page.getByText(/passwords do not match/i)).toBeVisible();
+    await expect(page.getByTestId("confirm-password-error")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("confirm-password-error")).toContainText(/passwords do not match/i);
   });
 
   test("has link back to login page", async ({ page }) => {

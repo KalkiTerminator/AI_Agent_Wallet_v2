@@ -48,7 +48,7 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -59,7 +59,7 @@ export function LoginForm() {
           {...register("email")}
         />
         {errors.email && (
-          <p className="text-sm text-destructive">{errors.email.message}</p>
+          <p role="alert" data-testid="email-error" className="text-sm text-destructive">{errors.email.message}</p>
         )}
       </div>
 
@@ -73,7 +73,7 @@ export function LoginForm() {
           {...register("password")}
         />
         {errors.password && (
-          <p className="text-sm text-destructive">{errors.password.message}</p>
+          <p role="alert" data-testid="password-error" className="text-sm text-destructive">{errors.password.message}</p>
         )}
         <div className="text-right">
           <Link href="/auth/reset-password" className="text-xs text-primary hover:underline">
@@ -83,7 +83,7 @@ export function LoginForm() {
       </div>
 
       {serverError && (
-        <p className="text-sm text-destructive">{serverError}</p>
+        <p role="alert" data-testid="server-error" className="text-sm text-destructive">{serverError}</p>
       )}
 
       <Button type="submit" className="w-full" disabled={isSubmitting}>
