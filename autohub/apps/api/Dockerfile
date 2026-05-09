@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # Build from the monorepo root (root directory = autohub/ in Railway)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 WORKDIR /app
 RUN corepack enable pnpm
 
@@ -30,7 +30,7 @@ RUN cd packages/shared && pnpm run build && cd /app && cd apps/api && pnpm run b
 #   /app/apps/api/node_modules  (dotenv, hono, stripe, etc.)
 #   /app/node_modules           (hoisted shared deps)
 #   /app/packages/shared        (workspace package resolved via symlink)
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app/apps/api
 ENV NODE_ENV=production
 
