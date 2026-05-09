@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { useUserProfile } from "@/context/UserProfileContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ type ExecState = "idle" | "loading" | "success" | "error";
 
 export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess }: ToolExecuteDialogProps) {
   const { data: session } = useSession();
+  const { refetch: refetchProfile } = useUserProfile();
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [state, setState] = useState<ExecState>("idle");
   const [result, setResult] = useState<ToolExecutionResult | null>(null);
@@ -51,6 +53,7 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
       setResult(res.data);
       setState("success");
       onSuccess?.(credits! - tool.creditCost);
+      refetchProfile(); // update credit balance in context without blocking
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "Execution failed");
       setState("error");
