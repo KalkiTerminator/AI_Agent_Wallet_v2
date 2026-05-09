@@ -92,7 +92,7 @@ No schema change needed — `users.stripeCustomerId` already exists.
 - Validates same fields as `POST /api/tools`
 - SSRF-validates new webhook URL if provided
 - Encrypts new webhook URL / auth header
-- If tool is currently `approved`, resets `toolStatus` to `draft` and `approvalStatus` to `pending`, `isActive` to `false` (re-enters approval queue)
+- If tool is currently `approved` or `pending_approval`, resets `toolStatus` to `draft` and `approvalStatus` to `pending`, `isActive` to `false` (pulls from approval queue and re-enters as draft)
 - Returns updated tool (sanitized)
 
 **`DELETE /api/tools/:id`** — Soft-delete, owner or admin only.

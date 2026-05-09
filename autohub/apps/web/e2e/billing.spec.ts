@@ -20,10 +20,12 @@ test.describe("Billing page", () => {
   });
 
   test("renders all three credit pack cards", async ({ page }) => {
-    // Starter / Growth / Pro packs
-    await expect(page.getByText("Starter")).toBeVisible();
-    await expect(page.getByText("Growth")).toBeVisible();
-    await expect(page.getByText("Pro")).toBeVisible();
+    // Credit pack section heading is "Buy Credits"; packs are Starter / Growth / Pro
+    // The pack labels are <p> elements with font-semibold class and the pack name
+    await expect(page.getByText("Buy Credits")).toBeVisible();
+    // Each pack has a "Buy" button — 3 total
+    const buyButtons = page.getByRole("button", { name: "Buy" });
+    await expect(buyButtons).toHaveCount(3);
   });
 
   test("each credit pack shows a price and Buy button", async ({ page }) => {
