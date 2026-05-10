@@ -64,7 +64,6 @@ export const aiTools = pgTable("ai_tools", {
   toolStatus: toolStatusEnum("tool_status").notNull().default("draft"),
   enabled: boolean("enabled").notNull().default(true),
   executionMode: executionModeEnum("execution_mode").notNull().default("sync"),
-  signingSecretHash: text("signing_secret_hash"),
   signingSecretEncrypted: text("signing_secret_encrypted"),
   rejectionReason: text("rejection_reason"),
   webhookTimeout: integer("webhook_timeout").notNull().default(30),
