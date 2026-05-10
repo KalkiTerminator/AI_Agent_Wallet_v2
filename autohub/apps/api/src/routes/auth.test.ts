@@ -35,6 +35,33 @@ vi.mock("../services/email.js", () => ({
   sendPasswordResetEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("../env.js", () => ({
+  env: {
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "a".repeat(64),
+    AUTOHUB_WEB_URL: "http://localhost:3000",
+    AUTOHUB_API_URL: "http://localhost:4000",
+    STRIPE_ALLOWED_PRICE_IDS: [],
+  },
+}));
+
+vi.mock("../middleware/rate-limit.js", () => ({
+  rateLimitIp: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  rateLimitIpStrict: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  checkLimit: vi.fn().mockResolvedValue(null),
+  getRedis: vi.fn().mockReturnValue(null),
+}));
+
+vi.mock("../services/audit.js", () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../services/crypto.js", () => ({
+  encrypt: vi.fn().mockResolvedValue("v1:encrypted"),
+  decrypt: vi.fn().mockResolvedValue("TOTP_SECRET"),
+  isEncrypted: vi.fn().mockReturnValue(true),
+}));
+
 // Import AFTER mocks are set up
 const { authRouter } = await import("./auth.js");
 

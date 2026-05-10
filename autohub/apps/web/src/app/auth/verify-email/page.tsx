@@ -3,8 +3,9 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { env } from "@/lib/env";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_BASE = env.NEXT_PUBLIC_API_URL;
 
 function VerifyEmailContent() {
   const params = useSearchParams();

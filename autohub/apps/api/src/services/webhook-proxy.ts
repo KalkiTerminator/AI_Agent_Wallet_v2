@@ -6,8 +6,9 @@ import { signPayload } from "./hmac.js";
 import { validateOutboundUrl, SSRFError } from "./url-guard.js";
 import { decrypt } from "./crypto.js";
 import { logAuditEvent } from "./audit.js";
+import { env } from "../env.js";
 
-const API_BASE_URL = process.env.AUTOHUB_API_URL ?? "http://localhost:4000";
+const API_BASE_URL = env.AUTOHUB_API_URL;
 
 export function generateSigningSecret(): string {
   return randomBytes(32).toString("hex");
@@ -182,10 +183,15 @@ export class WebhookProxyService {
       }
     }
 
-    if (tool.signingSecretHash) {
-      const sig = signPayload(tool.signingSecretHash, timestamp, execution.id, body);
+    if (tool.signingSecretEncrypted) {
+      const secret = await decrypt(tool.signingSecretEncrypted);
+      const sig = signPayload(secret, timestamp, execution.id, body);
       headers["X-AutoHub-Timestamp"] = timestamp;
       headers["X-AutoHub-Signature"] = sig;
+    } else if (tool.signingSecretHash) {
+      // Legacy: old tool not yet backfilled — skip signing and alert
+      const Sentry = await import("@sentry/node");
+      Sentry.captureMessage(`Tool ${tool.id} has no signingSecretEncrypted; signing skipped`, "warning");
     }
 
     // Hard platform cap: 60s regardless of tool configuration
@@ -320,18 +326,30 @@ export class WebhookProxyService {
       }
     }
 
-    if (tool.signingSecretHash) {
-      const sig = signPayload(tool.signingSecretHash, timestamp, execution.id, body);
+    if (tool.signingSecretEncrypted) {
+      const secret = await decrypt(tool.signingSecretEncrypted);
+      const sig = signPayload(secret, timestamp, execution.id, body);
       headers["X-AutoHub-Timestamp"] = timestamp;
       headers["X-AutoHub-Signature"] = sig;
+    } else if (tool.signingSecretHash) {
+      const Sentry = await import("@sentry/node");
+      Sentry.captureMessage(`Tool ${tool.id} has no signingSecretEncrypted; signing skipped`, "warning");
     }
 
     // Fire and forget — credits deducted by callback handler on success
-    fetch(webhookUrl, { method: "POST", headers, body }).catch(() => {
-      db.update(executions)
-        .set({ status: "failed", error: "Failed to reach webhook", completedAt: new Date() })
-        .where(eq(executions.id, execution.id));
-    });
+    const dispatchController = new AbortController();
+    const dispatchTimer = setTimeout(() => dispatchController.abort(), 30_000);
+    fetch(webhookUrl, { method: "POST", headers, body, signal: dispatchController.signal })
+      .catch((err) => {
+        db.update(executions)
+          .set({
+            status: "failed",
+            error: err.name === "AbortError" ? "Webhook dispatch timeout" : "Failed to reach webhook",
+            completedAt: new Date(),
+          })
+          .where(eq(executions.id, execution.id));
+      })
+      .finally(() => clearTimeout(dispatchTimer));
 
     return { executionId: execution.id, status: "pending" as const };
   }

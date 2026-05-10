@@ -23,7 +23,7 @@ export const users = pgTable("users", {
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index("users_stripe_customer_id_idx").on(t.stripeCustomerId)]);
 
 // ─── user_roles ─────────────────────────────────────────
 export const userRoles = pgTable("user_roles", {
@@ -65,6 +65,7 @@ export const aiTools = pgTable("ai_tools", {
   enabled: boolean("enabled").notNull().default(true),
   executionMode: executionModeEnum("execution_mode").notNull().default("sync"),
   signingSecretHash: text("signing_secret_hash"),
+  signingSecretEncrypted: text("signing_secret_encrypted"),
   rejectionReason: text("rejection_reason"),
   webhookTimeout: integer("webhook_timeout").notNull().default(30),
   webhookRetries: integer("webhook_retries").notNull().default(2),
@@ -139,7 +140,11 @@ export const subscriptions = pgTable("subscriptions", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.userId)]);
+}, (t) => [
+  unique().on(t.userId),
+  index("subscriptions_stripe_customer_id_idx").on(t.stripeCustomerId),
+  index("subscriptions_stripe_subscription_id_idx").on(t.stripeSubscriptionId),
+]);
 
 // ─── subscription_invoices ──────────────────────────────────
 export const subscriptionInvoices = pgTable("subscription_invoices", {
@@ -302,3 +307,10 @@ export const webhookDomains = pgTable("webhook_domains", {
 }, (t) => [
   index("webhook_domains_owner_idx").on(t.ownerUserId),
 ]);
+
+// ─── webhook_events ──────────────────────────────────────
+export const webhookEvents = pgTable("webhook_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});

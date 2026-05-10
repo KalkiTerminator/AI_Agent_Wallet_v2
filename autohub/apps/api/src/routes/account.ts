@@ -69,20 +69,22 @@ accountRouter.delete("/", requireAuth, async (c) => {
     return c.json({ error: "Account not found or already deleted" }, 404);
   }
 
-  await db.update(users).set({
-    deletedAt: now,
-    email: `deleted_${user.userId}@deleted`,
-    fullName: null,
-    passwordHash: "",
-    updatedAt: now,
-  }).where(eq(users.id, user.userId));
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({
+      deletedAt: now,
+      email: `deleted_${user.userId}@deleted`,
+      fullName: null,
+      passwordHash: "",
+      updatedAt: now,
+    }).where(eq(users.id, user.userId));
 
-  await db.update(aiTools).set({ deletedAt: now }).where(eq(aiTools.createdByUserId, user.userId));
-  await db.update(executions).set({ deletedAt: now }).where(eq(executions.userId, user.userId));
-  await db.update(toolUsages).set({ deletedAt: now }).where(eq(toolUsages.userId, user.userId));
+    await tx.update(aiTools).set({ deletedAt: now }).where(eq(aiTools.createdByUserId, user.userId));
+    await tx.update(executions).set({ deletedAt: now }).where(eq(executions.userId, user.userId));
+    await tx.update(toolUsages).set({ deletedAt: now }).where(eq(toolUsages.userId, user.userId));
+  });
 
+  // Redis revocation and audit happen outside the tx (Redis is not transactional with PG)
   await revokeAllSessions(user.userId);
-
   await logAuditEvent({ userId: user.userId, action: "account.deleted", ip, requestId });
 
   return c.json({ data: { deleted: true } });

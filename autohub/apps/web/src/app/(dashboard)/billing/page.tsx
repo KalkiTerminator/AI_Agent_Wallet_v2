@@ -11,10 +11,10 @@ import { Separator } from "@/components/ui/separator";
 import { CheckCircle, Loader2, Zap, CreditCard, ExternalLink } from "lucide-react";
 import { CREDIT_PACKS, SUBSCRIPTION_TIERS } from "@autohub/shared";
 import { cn } from "@/lib/utils";
+import { env } from "@/lib/env";
 
-// Stripe price IDs — set via env or placeholder for now
 const SUBSCRIPTION_PRICE_IDS: Record<string, string> = {
-  PRO: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? "price_pro_placeholder",
+  PRO: env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? "",
 };
 
 export default function BillingPage() {

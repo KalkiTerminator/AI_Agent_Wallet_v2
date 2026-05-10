@@ -21,10 +21,28 @@ vi.mock("../services/tool-execution.js", () => ({
   },
 }));
 
+// Mock env validation so tests don't require real env vars
+vi.mock("../env.js", () => ({
+  env: {
+    NEXTAUTH_SECRET: "test-secret",
+    ENCRYPTION_KEY: "a".repeat(64),
+    STRIPE_SECRET_KEY: "sk_test_xxx",
+    STRIPE_WEBHOOK_SECRET: "whsec_test",
+    AUTOHUB_WEB_URL: "http://localhost:3000",
+    AUTOHUB_API_URL: "http://localhost:4000",
+    DATABASE_URL: "postgres://test",
+    NODE_ENV: "test",
+    STRIPE_ALLOWED_PRICE_IDS: [],
+  },
+}));
+
 // Mock rate-limit to be a passthrough
 vi.mock("../middleware/rate-limit.js", () => ({
   rateLimitIp: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  rateLimitIpStrict: () => async (_c: unknown, next: () => Promise<void>) => await next(),
   rateLimitUser: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  checkLimit: vi.fn().mockResolvedValue(null),
+  getRedis: vi.fn().mockReturnValue(null),
 }));
 
 // Mock auth middleware: requireAuth sets user on context, requireVerified passes through
@@ -46,6 +64,22 @@ vi.mock("../middleware/auth.js", () => ({
 
 vi.mock("../middleware/require-verified.js", () => ({
   requireVerified: async (_c: unknown, next: () => Promise<void>) => await next(),
+}));
+
+vi.mock("../services/crypto.js", () => ({
+  encrypt: vi.fn().mockResolvedValue("v1:encrypted"),
+  decrypt: vi.fn().mockResolvedValue("decrypted"),
+  maskUrl: vi.fn().mockReturnValue("https://example.com/***"),
+  isEncrypted: vi.fn().mockReturnValue(true),
+}));
+
+vi.mock("../services/url-guard.js", () => ({
+  validateOutboundUrl: vi.fn().mockResolvedValue(undefined),
+  SSRFError: class SSRFError extends Error {},
+}));
+
+vi.mock("../services/audit.js", () => ({
+  logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { toolsRouter } = await import("./tools.js");

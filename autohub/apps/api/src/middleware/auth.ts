@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { db } from "../db/index.js";
 import { sessions } from "../db/schema.js";
 import { eq } from "drizzle-orm";
+import { env } from "../env.js";
 
 export interface JwtPayload {
   userId: string;
@@ -26,7 +27,7 @@ export const requireAuth = createMiddleware(async (c, next) => {
   }
   const token = authHeader.slice(7);
   try {
-    const payload = jwt.verify(token, process.env.NEXTAUTH_SECRET!) as JwtPayload;
+    const payload = jwt.verify(token, env.NEXTAUTH_SECRET) as JwtPayload;
 
     // Check session revocation (jti revocation check)
     if (payload.jti) {
