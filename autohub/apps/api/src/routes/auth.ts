@@ -15,6 +15,7 @@ import { encrypt, decrypt } from "../services/crypto.js";
 import { rateLimitIp, rateLimitIpStrict, checkLimit, getRedis } from "../middleware/rate-limit.js";
 import { env } from "../env.js";
 import { RATE_LIMITS } from "@autohub/shared";
+import { logger } from "../lib/logger.js";
 
 function hashVerifyToken(raw: string): string {
   return createHmac("sha256", env.NEXTAUTH_SECRET).update(raw).digest("hex");
@@ -52,7 +53,7 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
     { userId: user.id, consentType: "terms", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
     { userId: user.id, consentType: "privacy", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
     { userId: user.id, consentType: "data_processing", consentVersion: CURRENT_POLICY_VERSION, granted: true, ipAddress: ip },
-  ]).catch((err) => console.error("[CONSENT] Failed to log signup consent:", err));
+  ]).catch((err) => logger.warn({ err, userId: user.id }, "consent-log-failed"));
 
   await logAuditEvent({ userId: user.id, action: "auth.signup", ip, requestId });
 
@@ -87,7 +88,7 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
     expiresAt: verifyExpiresAt,
   });
   await sendVerificationEmail(user.email, rawVerifyToken).catch((err) =>
-    console.error("[EMAIL] Failed to send verification:", err)
+    logger.warn({ err, userId: user.id }, "email-send-failed")
   );
 
   return c.json({
@@ -331,7 +332,7 @@ authRouter.post("/resend-verification", requireAuth, async (c) => {
   await db.insert(emailVerificationTokens).values({ tokenHash, userId: dbUser.id, expiresAt });
 
   await sendVerificationEmail(dbUser.email, raw).catch((err) =>
-    console.error("[EMAIL] Failed to send verification:", err)
+    logger.warn({ err, userId: dbUser.id }, "email-send-failed")
   );
   await logAuditEvent({ userId: dbUser.id, action: "auth.verification_resent", ip, requestId });
 

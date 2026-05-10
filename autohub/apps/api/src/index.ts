@@ -22,7 +22,8 @@ import { errorHandler } from "./middleware/error-handler.js";
 import { securityHeaders } from "./middleware/security-headers.js";
 import { db } from "./db/index.js";
 import { users, userRoles } from "./db/schema.js";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
+import { getRedis } from "./middleware/rate-limit.js";
 
 const app = new Hono();
 
@@ -62,7 +63,23 @@ app.use("*", async (c, next) => {
 
 app.onError(errorHandler);
 
-app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+app.get("/health", async (c) => {
+  try {
+    await db.execute(sql`select 1`);
+    let redis: "ok" | "down" = "ok";
+    try {
+      const redisClient = getRedis();
+      if (redisClient) await redisClient.ping();
+      else redis = "down";
+    } catch {
+      redis = "down";
+    }
+    return c.json({ status: "ok", db: "ok", redis }, 200);
+  } catch (err) {
+    Sentry.captureException(err, { tags: { area: "healthcheck" } });
+    return c.json({ status: "error", db: "down" }, 503);
+  }
+});
 
 // Promote a user to admin by email.
 // DISABLED in production — use scripts/promote-admin.ts (direct DB access) instead.

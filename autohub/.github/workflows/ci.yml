@@ -204,7 +204,7 @@ jobs:
         working-directory: apps/api
 
       - name: Wait for API to be ready
-        run: npx wait-on http://localhost:4000/health --timeout 30000
+        run: npx wait-on http-get://localhost:4000/health --timeout 30000
 
       - name: Run E2E tests (authenticated + unauthenticated)
         run: pnpm e2e --project=authenticated --project=unauthenticated --project=authenticated-admin

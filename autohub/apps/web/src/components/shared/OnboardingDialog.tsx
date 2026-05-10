@@ -14,8 +14,6 @@ import { Zap, BarChart2, CreditCard, ArrowRight } from "lucide-react";
 import { useUserProfile } from "@/context/UserProfileContext";
 import { apiClient } from "@/lib/api-client";
 
-const STORAGE_KEY = "autohub_onboarded";
-
 const STEPS = [
   {
     icon: Zap,
@@ -40,31 +38,27 @@ const STEPS = [
 export function OnboardingDialog() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { profile, loading, markOnboarded } = useUserProfile();
+  const { profile, loading, markOnboarded, revertOnboarded } = useUserProfile();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
 
   useEffect(() => {
     if (status !== "authenticated" || loading || !profile) return;
-
-    // Server is authoritative: if already onboarded, never show
+    // Server is the sole gate — no localStorage
     if (profile.onboardedAt) return;
-
-    // localStorage cache: skip dialog on repeat visits same device
-    const key = `${STORAGE_KEY}_${profile.id}`;
-    if (localStorage.getItem(key)) return;
-
     setOpen(true);
   }, [status, loading, profile]);
 
   async function dismiss() {
     if (!session?.apiToken || !profile) return;
-    const key = `${STORAGE_KEY}_${profile.id}`;
-    localStorage.setItem(key, "1");
     setOpen(false);
     markOnboarded();
-    // Fire and forget — idempotent
-    apiClient.post("/api/account/onboarding/complete", {}, session.apiToken).catch(() => {});
+    try {
+      await apiClient.post("/api/account/onboarding/complete", {}, session.apiToken);
+    } catch {
+      // API failed — revert optimistic update so dialog reappears on next mount
+      revertOnboarded();
+    }
   }
 
   function handleNext() {

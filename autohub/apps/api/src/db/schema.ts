@@ -23,7 +23,7 @@ export const users = pgTable("users", {
   onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index("users_stripe_customer_id_idx").on(t.stripeCustomerId)]);
 
 // ─── user_roles ─────────────────────────────────────────
 export const userRoles = pgTable("user_roles", {
@@ -140,7 +140,11 @@ export const subscriptions = pgTable("subscriptions", {
   cancelAtPeriodEnd: boolean("cancel_at_period_end").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.userId)]);
+}, (t) => [
+  unique().on(t.userId),
+  index("subscriptions_stripe_customer_id_idx").on(t.stripeCustomerId),
+  index("subscriptions_stripe_subscription_id_idx").on(t.stripeSubscriptionId),
+]);
 
 // ─── subscription_invoices ──────────────────────────────────
 export const subscriptionInvoices = pgTable("subscription_invoices", {
