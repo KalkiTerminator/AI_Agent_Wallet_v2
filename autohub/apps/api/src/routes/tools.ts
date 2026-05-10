@@ -11,7 +11,7 @@ import { rateLimitIp, rateLimitUser } from "../middleware/rate-limit.js";
 import { RATE_LIMITS, ReviewChecklistSchema } from "@autohub/shared";
 import { ToolExecutionService } from "../services/tool-execution.js";
 import { validateOutboundUrl, SSRFError } from "../services/url-guard.js";
-import { encrypt, maskUrl } from "../services/crypto.js";
+import { encrypt, decrypt, maskUrl } from "../services/crypto.js";
 import { logAuditEvent } from "../services/audit.js";
 
 const toolsRouter = new Hono();
@@ -100,6 +100,8 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
 
   const webhookUrlEncrypted = body.webhookUrl ? await encrypt(body.webhookUrl) : null;
   const authHeaderEncrypted = body.authHeader ? await encrypt(body.authHeader) : null;
+  const plainSigningSecret = randomBytes(32).toString("hex");
+  const signingSecretEncrypted = await encrypt(plainSigningSecret);
 
   const [tool] = await db
     .insert(aiTools)
@@ -113,6 +115,7 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
       webhookUrl: null, // no longer store plain text
       webhookUrlEncrypted,
       authHeaderEncrypted,
+      signingSecretEncrypted,
       hasWebhook: !!body.webhookUrl,
       outputType: body.outputType ?? "smart",
       webhookTimeout: body.webhookTimeout ?? 30,
@@ -124,13 +127,16 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
     .returning();
 
   // Return masked URL — never return plaintext or encrypted blob to client
+  // signingSecret returned once at creation time only
   const safeData = {
     ...tool,
     webhookUrlEncrypted: undefined,
     authHeaderEncrypted: undefined,
+    signingSecretEncrypted: undefined,
     webhookUrl: undefined,
     webhookUrlMasked: body.webhookUrl ? maskUrl(body.webhookUrl) : null,
     hasAuthHeader: !!body.authHeader,
+    signingSecret: plainSigningSecret,
   };
 
   return c.json({ data: safeData }, 201);
@@ -498,6 +504,30 @@ toolsRouter.delete("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c
   await db.update(aiTools).set({ deletedAt: new Date() }).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)));
 
   return new Response(null, { status: 204 });
+});
+
+// POST /api/tools/:id/rotate-secret — regenerate signing secret (owner or admin)
+toolsRouter.post("/:id/rotate-secret", requireAuth, rateLimitIp(5, 60_000), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const requestId = (c.get as any)("requestId");
+
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const plainSecret = randomBytes(32).toString("hex");
+  const signingSecretEncrypted = await encrypt(plainSecret);
+
+  await db.update(aiTools)
+    .set({ signingSecretEncrypted, updatedAt: new Date() })
+    .where(eq(aiTools.id, id));
+
+  await logAuditEvent({ userId: user.userId, action: "tool.secret_rotated", resourceType: "tool", resourceId: id, requestId });
+
+  return c.json({ signingSecret: plainSecret });
 });
 
 // GET /api/tools/:id

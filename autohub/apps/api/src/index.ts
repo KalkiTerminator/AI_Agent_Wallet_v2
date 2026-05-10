@@ -1,5 +1,6 @@
 import "./instrument.js"; // Sentry must be imported before everything else
 import "dotenv/config";
+import { env } from "./env.js"; // validates all required env vars at startup
 import * as Sentry from "@sentry/node";
 import { serve } from "@hono/node-server";
 import { Hono } from "hono";
@@ -25,7 +26,7 @@ import { eq } from "drizzle-orm";
 
 const app = new Hono();
 
-const allowedOrigins = (process.env.AUTOHUB_CORS_ORIGINS ?? process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000").split(",");
+const allowedOrigins = (env.AUTOHUB_CORS_ORIGINS ?? env.AUTOHUB_WEB_URL).split(",");
 
 app.use(
   "*",
@@ -65,9 +66,9 @@ app.get("/health", (c) => c.json({ status: "ok", timestamp: new Date().toISOStri
 
 // Promote a user to admin by email.
 // DISABLED in production — use scripts/promote-admin.ts (direct DB access) instead.
-if (process.env.NODE_ENV !== "production") {
+if (env.NODE_ENV !== "production") {
   app.post("/seed/promote-admin", async (c) => {
-    const secret = process.env.SEED_SECRET;
+    const secret = env.SEED_SECRET;
     if (!secret) return c.json({ error: "SEED_SECRET not configured" }, 403);
     // Require both env secret AND a matching X-Seed-Token header
     const headerToken = c.req.header("X-Seed-Token");
@@ -96,7 +97,7 @@ app.route("/api/executions", executionsRouter);
 app.route("/api/account", accountRouter);
 app.route("/api/admin/compliance", complianceRouter);
 
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(env.PORT ?? 4000);
 logger.info({ port }, "AutoHub API running");
 serve({ fetch: app.fetch, port });
 

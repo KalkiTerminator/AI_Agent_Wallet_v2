@@ -12,18 +12,24 @@ import { logAuditEvent } from "../services/audit.js";
 import { sendVerificationEmail, sendPasswordResetEmail } from "../services/email.js";
 import { generateSecret as totpGenerateSecret, verifySync as totpVerifySync, generateURI as totpGenerateURI } from "otplib";
 import { encrypt, decrypt } from "../services/crypto.js";
-import { rateLimitIp } from "../middleware/rate-limit.js";
+import { rateLimitIp, rateLimitIpStrict, checkLimit, getRedis } from "../middleware/rate-limit.js";
+import { env } from "../env.js";
+import { RATE_LIMITS } from "@autohub/shared";
 
 function hashVerifyToken(raw: string): string {
-  return createHmac("sha256", process.env.NEXTAUTH_SECRET!).update(raw).digest("hex");
+  return createHmac("sha256", env.NEXTAUTH_SECRET).update(raw).digest("hex");
 }
 
 const authRouter = new Hono();
 
-authRouter.use("/login", rateLimitIp(10, 60_000));
-authRouter.use("/register", rateLimitIp(10, 60_000));
-authRouter.use("/reset/request", rateLimitIp(5, 60_000));
-authRouter.use("/reset/confirm", rateLimitIp(10, 60_000));
+authRouter.use("/login", rateLimitIpStrict(10, 60_000));
+authRouter.use("/register", rateLimitIpStrict(10, 60_000));
+authRouter.use("/reset/request", rateLimitIpStrict(5, 60_000));
+authRouter.use("/reset/confirm", rateLimitIpStrict(10, 60_000));
+authRouter.use("/mfa/setup", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, RATE_LIMITS.AUTH_ACTIONS.windowMs));
+authRouter.use("/mfa/verify-setup", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, RATE_LIMITS.AUTH_ACTIONS.windowMs));
+authRouter.use("/mfa/disable", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, RATE_LIMITS.AUTH_ACTIONS.windowMs));
+authRouter.use("/mfa/challenge", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, RATE_LIMITS.AUTH_ACTIONS.windowMs));
 
 authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
   const { email, password, fullName } = c.req.valid("json");
@@ -60,7 +66,7 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
       emailVerified: false,
       mfaEnabled: false,
     },
-    process.env.NEXTAUTH_SECRET!,
+    env.NEXTAUTH_SECRET,
     { expiresIn: "1d" }
   );
 
@@ -116,7 +122,7 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   if (user.mfaEnabled) {
     const mfaToken = jwt.sign(
       { userId: user.id, type: "mfa_pending" },
-      process.env.NEXTAUTH_SECRET!,
+      env.NEXTAUTH_SECRET,
       { expiresIn: "5m" }
     );
     return c.json({ mfaRequired: true, mfaToken, user: { id: user.id, email: user.email, role } });
@@ -132,7 +138,7 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
       emailVerified: !!user.emailVerifiedAt,
       mfaEnabled: user.mfaEnabled ?? false,
     },
-    process.env.NEXTAUTH_SECRET!,
+    env.NEXTAUTH_SECRET,
     { expiresIn: "1d" }
   );
 
@@ -194,6 +200,12 @@ authRouter.post("/reset/request", async (c) => {
 
   // Always return success to prevent email enumeration
   if (!user) return c.json({ data: { message: "If that email exists, a reset link has been sent." } });
+
+  // Per-email throttle: max 3 requests per email per minute (returns generic 200, not 429)
+  const emailThrottle = await checkLimit("reset_email", body.email.trim().toLowerCase(), 3, 60_000);
+  if (emailThrottle && !emailThrottle.redisDown && !emailThrottle.success) {
+    return c.json({ data: { message: "If that email exists, a reset link has been sent." } });
+  }
 
   // Invalidate any existing tokens for this user
   await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, user.id));
@@ -290,7 +302,7 @@ authRouter.get("/verify-email", async (c) => {
   const requestId = (c.get as any)("requestId");
   await logAuditEvent({ userId: matched.userId, action: "auth.email_verified", ip, requestId });
 
-  return c.redirect(`${process.env.AUTOHUB_WEB_URL ?? "http://localhost:3000"}/dashboard?verified=true`);
+  return c.redirect(`${env.AUTOHUB_WEB_URL}/dashboard?verified=true`);
 });
 
 // POST /auth/resend-verification — resend verification email (auth required)
@@ -472,9 +484,23 @@ authRouter.post("/mfa/challenge", async (c) => {
   const body = await c.req.json<{ mfaToken: string; code: string }>();
   if (!body.mfaToken || !body.code) return c.json({ error: "mfaToken and code are required" }, 400);
 
+  // Decode token without verifying to extract jti for per-token rate limiting
+  const decoded = jwt.decode(body.mfaToken);
+  const rawPayload = (decoded && typeof decoded === "object") ? decoded as { jti?: string; exp?: number } : null;
+
+  const jti = rawPayload?.jti;
+  if (jti) {
+    // Check if token is blacklisted (too many failed attempts)
+    const r = getRedis();
+    if (r) {
+      const blacklisted = await r.get(`autohub:mfa:revoked:${jti}`).catch(() => null);
+      if (blacklisted) return c.json({ error: "MFA token invalidated due to too many failed attempts" }, 401);
+    }
+  }
+
   let payload: { userId: string; type: string } & Record<string, unknown>;
   try {
-    payload = jwt.verify(body.mfaToken, process.env.NEXTAUTH_SECRET!) as typeof payload;
+    payload = jwt.verify(body.mfaToken, env.NEXTAUTH_SECRET) as typeof payload;
   } catch {
     return c.json({ error: "Invalid or expired MFA token" }, 400);
   }
@@ -505,21 +531,35 @@ authRouter.post("/mfa/challenge", async (c) => {
       }
     }
   }
-  if (!verified) return c.json({ error: "Invalid MFA code" }, 400);
+  if (!verified) {
+    if (jti) {
+      const result = await checkLimit("mfa_challenge", jti, 5, 600_000);
+      if (result && !result.redisDown && !result.success) {
+        const r = getRedis();
+        if (r) {
+          const exp = rawPayload?.exp;
+          const ttl = exp ? Math.max(exp - Math.floor(Date.now() / 1000), 1) : 600;
+          await r.set(`autohub:mfa:revoked:${jti}`, "1", "EX", ttl).catch(() => {});
+        }
+        return c.json({ error: "Too many failed attempts. MFA token invalidated." }, 429);
+      }
+    }
+    return c.json({ error: "Invalid MFA code" }, 400);
+  }
 
   const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, dbUser.id)).limit(1);
   const role = roleRow?.role ?? "user";
-  const jti = randomUUID();
+  const sessionJti = randomUUID();
 
   const token = jwt.sign(
-    { userId: dbUser.id, email: dbUser.email, role, jti, emailVerified: !!dbUser.emailVerifiedAt, mfaEnabled: true },
-    process.env.NEXTAUTH_SECRET!,
+    { userId: dbUser.id, email: dbUser.email, role, jti: sessionJti, emailVerified: !!dbUser.emailVerifiedAt, mfaEnabled: true },
+    env.NEXTAUTH_SECRET,
     { expiresIn: "1d" }
   );
 
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
   await db.insert(sessions).values({
-    userId: dbUser.id, tokenJti: jti,
+    userId: dbUser.id, tokenJti: sessionJti,
     userAgent: c.req.header("user-agent") ?? null, ip,
   }).catch(() => {});
 

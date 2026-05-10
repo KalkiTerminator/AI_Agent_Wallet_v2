@@ -65,6 +65,7 @@ export const aiTools = pgTable("ai_tools", {
   enabled: boolean("enabled").notNull().default(true),
   executionMode: executionModeEnum("execution_mode").notNull().default("sync"),
   signingSecretHash: text("signing_secret_hash"),
+  signingSecretEncrypted: text("signing_secret_encrypted"),
   rejectionReason: text("rejection_reason"),
   webhookTimeout: integer("webhook_timeout").notNull().default(30),
   webhookRetries: integer("webhook_retries").notNull().default(2),
@@ -302,3 +303,10 @@ export const webhookDomains = pgTable("webhook_domains", {
 }, (t) => [
   index("webhook_domains_owner_idx").on(t.ownerUserId),
 ]);
+
+// ─── webhook_events ──────────────────────────────────────
+export const webhookEvents = pgTable("webhook_events", {
+  eventId: text("event_id").primaryKey(),
+  eventType: text("event_type").notNull(),
+  receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+});

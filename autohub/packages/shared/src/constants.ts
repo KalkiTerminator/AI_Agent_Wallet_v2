@@ -66,4 +66,5 @@ export const RATE_LIMITS = {
   PAYMENT_ACTIONS: 5,
   COMPLIANCE: 10,
   SANDBOX: 10,
+  AUTH_ACTIONS: { max: 10, windowMs: 60_000 },
 } as const;

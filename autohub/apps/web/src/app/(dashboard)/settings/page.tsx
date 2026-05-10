@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle, AlertCircle, Loader2, Copy, Check, ShieldCheck, ShieldOff } from "lucide-react";
 import type { SubscriptionStatus } from "@/types";
+import { env } from "@/lib/env";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_BASE = env.NEXT_PUBLIC_API_URL;
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
