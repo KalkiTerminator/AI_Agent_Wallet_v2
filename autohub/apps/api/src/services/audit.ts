@@ -1,5 +1,7 @@
+import * as Sentry from "@sentry/node";
 import { db } from "../db/index.js";
 import { auditLogs } from "../db/schema.js";
+import { logger } from "../lib/logger.js";
 
 // PII and secret keys that must never appear in audit log metadata
 const REDACTED_KEYS = new Set([
@@ -52,7 +54,8 @@ export async function logAuditEvent(params: AuditEventParams): Promise<void> {
       ipAddress: params.ip ?? null,
     });
   } catch (err) {
-    // Log to stderr but never propagate — audit failure must not break requests
-    console.error("[AUDIT] Failed to write audit log:", err);
+    // Never propagate — audit failure must not break requests, but MUST page
+    logger.error({ err }, "audit-write-failed");
+    Sentry.captureException(err, { tags: { area: "audit" }, level: "error" });
   }
 }

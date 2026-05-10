@@ -25,6 +25,19 @@ vi.mock("../services/audit.js", () => ({
   logAuditEvent: vi.fn(),
 }));
 
+vi.mock("../env.js", () => ({
+  env: {
+    STRIPE_SECRET_KEY: "sk_test_xxx",
+    STRIPE_WEBHOOK_SECRET: "whsec_test",
+    AUTOHUB_WEB_URL: "http://localhost:3000",
+    STRIPE_ALLOWED_PRICE_IDS: [],
+  },
+}));
+
+vi.mock("../services/stripe-webhook-dedup.js", () => ({
+  ingestStripeEvent: vi.fn().mockResolvedValue("first"),
+}));
+
 const { webhooksRouter } = await import("./webhooks.js");
 const { db } = await import("../db/index.js");
 

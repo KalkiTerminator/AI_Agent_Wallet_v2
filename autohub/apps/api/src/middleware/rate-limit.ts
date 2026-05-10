@@ -1,11 +1,12 @@
 import Redis from "ioredis";
 import { createMiddleware } from "hono/factory";
 import { logger } from "../lib/logger.js";
+import * as Sentry from "@sentry/node";
 
 let redis: Redis | null = null;
 let warnedAboutMissingRedis = false;
 
-function getRedis(): Redis | null {
+export function getRedis(): Redis | null {
   const url = process.env.REDIS_URL ?? process.env.REDIS_PRIVATE_URL;
   if (!url) {
     if (!warnedAboutMissingRedis) {
@@ -42,14 +43,18 @@ else
 end
 `.trim();
 
-async function checkLimit(
+export type CheckLimitResult =
+  | { success: boolean; limit: number; remaining: number; reset: number; redisDown?: false }
+  | { redisDown: true };
+
+export async function checkLimit(
   prefix: string,
   identifier: string,
   maxRequests: number,
   windowMs: number
-): Promise<{ success: boolean; limit: number; remaining: number; reset: number } | null> {
+): Promise<CheckLimitResult | null> {
   const r = getRedis();
-  if (!r) return null;
+  if (!r) return null; // Redis not configured — caller treats as no-op
 
   const key = `autohub:rl:${prefix}:${maxRequests}:${windowMs}:${identifier}`;
   const now = Date.now();
@@ -63,9 +68,16 @@ async function checkLimit(
       reset: result[3],
     };
   } catch (err) {
-    // Fail open — never block requests due to Redis errors
-    logger.warn({ err }, "Rate limit check failed, failing open");
-    return null;
+    logger.warn({ err }, "Rate limit check failed");
+    return { redisDown: true };
+  }
+}
+
+function applyRateLimitHeaders(c: Parameters<Parameters<typeof createMiddleware>[0]>[0], result: CheckLimitResult) {
+  if (!result.redisDown) {
+    c.header("X-RateLimit-Limit", String(result.limit));
+    c.header("X-RateLimit-Remaining", String(result.remaining));
+    c.header("X-RateLimit-Reset", String(result.reset));
   }
 }
 
@@ -77,13 +89,36 @@ export function rateLimitIp(maxRequests: number, windowMs = 60_000) {
 
     const result = await checkLimit("ip", ip, maxRequests, windowMs);
     if (result) {
-      c.header("X-RateLimit-Limit", String(result.limit));
-      c.header("X-RateLimit-Remaining", String(result.remaining));
-      c.header("X-RateLimit-Reset", String(result.reset));
-      if (!result.success) {
-        return c.json({ error: "Too many requests" }, 429);
+      if (result.redisDown) {
+        Sentry.captureMessage("rate-limit-redis-down", "warning");
+      } else {
+        applyRateLimitHeaders(c, result);
+        if (!result.success) return c.json({ error: "Too many requests" }, 429);
       }
     }
+    await next();
+  });
+}
+
+// Fail-closed: returns 503 if Redis is down. Use on auth + payment endpoints.
+export function rateLimitIpStrict(maxRequests: number, windowMs = 60_000) {
+  return createMiddleware(async (c, next) => {
+    const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim()
+      ?? c.req.header("x-real-ip")
+      ?? "unknown";
+
+    const result = await checkLimit("ip", ip, maxRequests, windowMs);
+    if (result === null) {
+      // Redis not configured — fail-open in dev; in prod env validation already requires REDIS_URL
+      await next();
+      return;
+    }
+    if (result.redisDown) {
+      Sentry.captureMessage("rate-limit-redis-down", "error");
+      return c.json({ error: "Service unavailable" }, 503);
+    }
+    applyRateLimitHeaders(c, result);
+    if (!result.success) return c.json({ error: "Too many requests" }, 429);
     await next();
   });
 }
@@ -98,11 +133,11 @@ export function rateLimitUser(maxRequests: number, windowMs = 60_000) {
 
     const result = await checkLimit("user", user.userId, maxRequests, windowMs);
     if (result) {
-      c.header("X-RateLimit-Limit", String(result.limit));
-      c.header("X-RateLimit-Remaining", String(result.remaining));
-      c.header("X-RateLimit-Reset", String(result.reset));
-      if (!result.success) {
-        return c.json({ error: "Too many requests" }, 429);
+      if (result.redisDown) {
+        Sentry.captureMessage("rate-limit-redis-down", "warning");
+      } else {
+        applyRateLimitHeaders(c, result);
+        if (!result.success) return c.json({ error: "Too many requests" }, 429);
       }
     }
     await next();

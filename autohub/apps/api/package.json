@@ -11,6 +11,8 @@
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "build:cron": "tsc --outDir dist --module nodenext --target es2022 src/scripts/retention-cron.ts",
+    "build:executions-timeout": "tsc --outDir dist --module nodenext --target es2022 src/scripts/executions-timeout-cron.ts",
+    "start:executions-timeout": "node dist/scripts/executions-timeout-cron.js",
     "seed:e2e": "tsx src/scripts/e2e-seed.ts"
   },
   "dependencies": {

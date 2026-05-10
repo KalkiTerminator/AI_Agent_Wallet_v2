@@ -8,8 +8,18 @@ vi.mock("../middleware/auth.js", () => ({
   },
 }));
 
+vi.mock("../env.js", () => ({
+  env: {
+    STRIPE_SECRET_KEY: "sk_test_xxx",
+    STRIPE_WEBHOOK_SECRET: "whsec_test",
+    AUTOHUB_WEB_URL: "http://localhost:3000",
+    STRIPE_ALLOWED_PRICE_IDS: [],
+  },
+}));
+
 vi.mock("../middleware/rate-limit.js", () => ({
   rateLimitIp: () => async (_c: unknown, next: () => Promise<void>) => await next(),
+  rateLimitIpStrict: () => async (_c: unknown, next: () => Promise<void>) => await next(),
 }));
 
 vi.mock("../db/index.js", () => ({

@@ -5,9 +5,11 @@ import { db } from "../db/index.js";
 import { payments, subscriptions, users, subscriptionInvoices } from "../db/schema.js";
 import { logAuditEvent } from "../services/audit.js";
 import { SUBSCRIPTION_MONTHLY_CREDITS } from "@autohub/shared";
+import { env } from "../env.js";
+import { ingestStripeEvent } from "../services/stripe-webhook-dedup.js";
 
 const webhooksRouter = new Hono();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+const stripe = new Stripe(env.STRIPE_SECRET_KEY);
 
 webhooksRouter.post("/stripe", async (c) => {
   const sig = c.req.header("stripe-signature");
@@ -15,9 +17,13 @@ webhooksRouter.post("/stripe", async (c) => {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, sig!, process.env.STRIPE_WEBHOOK_SECRET!);
+    event = stripe.webhooks.constructEvent(rawBody, sig!, env.STRIPE_WEBHOOK_SECRET);
   } catch {
     return c.json({ error: "Invalid signature" }, 400);
+  }
+
+  if (await ingestStripeEvent(event) === "duplicate") {
+    return c.json({ received: true });
   }
 
   switch (event.type) {

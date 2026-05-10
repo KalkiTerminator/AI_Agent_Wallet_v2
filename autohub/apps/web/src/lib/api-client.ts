@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { env } from "./env";
+const API_BASE_URL = env.NEXT_PUBLIC_API_URL;
 
 interface ApiOptions extends RequestInit {
   token?: string;

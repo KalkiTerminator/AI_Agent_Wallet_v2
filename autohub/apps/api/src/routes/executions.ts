@@ -4,6 +4,7 @@ import { db } from "../db/index.js";
 import { executions, aiTools, credits, userRoles } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { verifySignature } from "../services/hmac.js";
+import { decrypt } from "../services/crypto.js";
 
 const executionsRouter = new Hono();
 
@@ -50,15 +51,14 @@ executionsRouter.post("/:id/callback", async (c) => {
   const [tool] = await db.select().from(aiTools).where(eq(aiTools.id, execution.toolId)).limit(1);
   if (!tool) return c.json({ error: "Tool not found" }, 404);
 
-  if (tool.signingSecretHash && signature) {
-    const valid = verifySignature({
-      secret: tool.signingSecretHash,
-      timestamp,
-      executionId: id,
-      rawBody,
-      signature,
-    });
+  if (tool.signingSecretEncrypted) {
+    if (!signature) return c.json({ error: "Missing signature" }, 401);
+    const secret = await decrypt(tool.signingSecretEncrypted);
+    const valid = verifySignature({ secret, timestamp, executionId: id, rawBody, signature });
     if (!valid) return c.json({ error: "Invalid signature" }, 401);
+  } else if (tool.signingSecretHash) {
+    // Legacy tool not yet backfilled: reject callback until backfill runs
+    return c.json({ error: "Tool signing not configured; run backfill" }, 503);
   }
 
   const payload = JSON.parse(rawBody) as { success?: boolean; output?: unknown; error?: string };

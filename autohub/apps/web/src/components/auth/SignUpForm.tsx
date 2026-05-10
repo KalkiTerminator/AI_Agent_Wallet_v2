@@ -9,8 +9,9 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { env } from "@/lib/env";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const API_BASE = env.NEXT_PUBLIC_API_URL;
 
 const signUpSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
