@@ -45,6 +45,7 @@ export default function SettingsPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [mfaState, setMfaState] = useState<"idle"|"enrolling"|"confirming"|"done"|"disabling">("idle");
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaError, setMfaError] = useState("");
 
   // Seed name from session
@@ -135,6 +136,7 @@ export default function SettingsPage() {
 
   async function handleStartMfaEnroll() {
     if (!session?.apiToken) return;
+    setMfaLoading(true);
     setMfaState("enrolling");
     try {
       const res = await fetch(`${API_BASE}/api/auth/mfa/setup`, {
@@ -149,6 +151,9 @@ export default function SettingsPage() {
       }, 100);
     } catch {
       setMfaState("idle");
+      setMfaError("Failed to start MFA setup. Please try again.");
+    } finally {
+      setMfaLoading(false);
     }
   }
 
@@ -360,25 +365,36 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">
               {mfaEnabled ? "MFA is enabled on your account." : "Add an extra layer of security to your account."}
             </p>
+            {mfaError && <p className="text-xs text-destructive">{mfaError}</p>}
             {mfaEnabled ? (
-              <Button variant="outline" size="sm" className="h-7 text-xs text-destructive" onClick={() => setMfaState("disabling")}>
+              <Button variant="outline" size="sm" className="h-7 text-xs text-destructive" onClick={() => { setMfaError(""); setMfaState("disabling"); }}>
                 Disable MFA
               </Button>
             ) : (
-              <Button size="sm" className="h-7 text-xs" onClick={handleStartMfaEnroll}>
+              <Button size="sm" className="h-7 text-xs" onClick={handleStartMfaEnroll} disabled={mfaLoading}>
+                {mfaLoading && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
                 Enable MFA
               </Button>
             )}
           </div>
         )}
-        {mfaState === "enrolling" && mfaSetupData && (
+        {mfaState === "enrolling" && (
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">Scan this QR code with your authenticator app:</p>
-            <canvas id="mfa-qr" className="rounded-lg" />
-            <p className="text-xs text-muted-foreground">Or enter this secret manually: <code className="text-xs">{mfaSetupData.secret}</code></p>
-            <Input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="Enter 6-digit code" maxLength={6} className="h-8 text-xs" />
-            {mfaError && <p className="text-xs text-destructive">{mfaError}</p>}
-            <Button size="sm" className="h-7 text-xs" onClick={handleConfirmMfaEnroll} disabled={mfaCode.length < 6}>Verify & Enable</Button>
+            {mfaLoading || !mfaSetupData ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Setting up MFA…
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">Scan this QR code with your authenticator app:</p>
+                <canvas id="mfa-qr" className="rounded-lg" />
+                <p className="text-xs text-muted-foreground">Or enter this secret manually: <code className="text-xs">{mfaSetupData.secret}</code></p>
+                <Input value={mfaCode} onChange={(e) => setMfaCode(e.target.value)} placeholder="Enter 6-digit code" maxLength={6} className="h-8 text-xs" />
+                {mfaError && <p className="text-xs text-destructive">{mfaError}</p>}
+                <Button size="sm" className="h-7 text-xs" onClick={handleConfirmMfaEnroll} disabled={mfaCode.length < 6}>Verify & Enable</Button>
+              </>
+            )}
           </div>
         )}
         {mfaState === "done" && (
