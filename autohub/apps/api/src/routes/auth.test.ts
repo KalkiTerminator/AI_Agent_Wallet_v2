@@ -186,7 +186,7 @@ describe("POST /api/auth/login", () => {
       limit: vi
         .fn()
         // first call: find user
-        .mockResolvedValueOnce([{ id: "user-1", email: "user@example.com", passwordHash: "hashed", fullName: "Alice" }])
+        .mockResolvedValueOnce([{ id: "user-1", email: "user@example.com", passwordHash: "hashed", fullName: "Alice", isActive: true, deletedAt: null }])
         // second call: find role
         .mockResolvedValueOnce([{ userId: "user-1", role: "user" }]),
     };
@@ -219,6 +219,24 @@ describe("POST /api/auth/login", () => {
     expect(res.status).toBe(401);
     const json = await res.json();
     expect(json.error).toBe("Invalid credentials");
+  });
+
+  it("returns 403 when account is deactivated", async () => {
+    const selectChain = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue([{ id: "user-1", email: "user@example.com", passwordHash: "hashed", isActive: false, deletedAt: null }]),
+    };
+    mockSelect.mockReturnValue(selectChain);
+
+    const res = await req("POST", "/api/auth/login", {
+      email: "user@example.com",
+      password: "password123",
+    });
+
+    expect(res.status).toBe(403);
+    const json = await res.json();
+    expect(json.error).toBe("Account is deactivated");
   });
 
   it("returns 401 when password is wrong", async () => {

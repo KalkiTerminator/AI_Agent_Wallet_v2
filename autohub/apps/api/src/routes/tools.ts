@@ -16,12 +16,27 @@ import { logAuditEvent } from "../services/audit.js";
 
 const toolsRouter = new Hono();
 
+// Bounds match CreateToolSchema — returns an error string or null
+function validateToolNumerics(body: { creditCost?: number; webhookTimeout?: number; webhookRetries?: number }): string | null {
+  if (body.creditCost !== undefined && (!Number.isInteger(body.creditCost) || body.creditCost < 1 || body.creditCost > 1000)) {
+    return "creditCost must be an integer between 1 and 1000";
+  }
+  if (body.webhookTimeout !== undefined && (!Number.isInteger(body.webhookTimeout) || body.webhookTimeout < 1 || body.webhookTimeout > 300)) {
+    return "webhookTimeout must be an integer between 1 and 300 seconds";
+  }
+  if (body.webhookRetries !== undefined && (!Number.isInteger(body.webhookRetries) || body.webhookRetries < 0 || body.webhookRetries > 5)) {
+    return "webhookRetries must be an integer between 0 and 5";
+  }
+  return null;
+}
+
 function sanitizeToolForClient(tool: typeof aiTools.$inferSelect) {
   return {
     ...tool,
     webhookUrl: undefined,
     webhookUrlEncrypted: undefined,
     authHeaderEncrypted: undefined,
+    signingSecretEncrypted: undefined,
     hasAuthHeader: !!tool.authHeaderEncrypted,
   };
 }
@@ -39,7 +54,7 @@ toolsRouter.get("/", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 toolsRouter.get("/mine", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const user = c.get("user");
   const tools = await db.select().from(aiTools).where(and(eq(aiTools.createdByUserId, user.userId), isNull(aiTools.deletedAt)));
-  return c.json({ data: tools });
+  return c.json({ data: tools.map(sanitizeToolForClient) });
 });
 
 // GET /api/tools/usage — paginated usage history for current user
@@ -85,6 +100,8 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
   if (!body.name?.trim()) return c.json({ error: "name is required" }, 400);
   if (!body.description?.trim()) return c.json({ error: "description is required" }, 400);
   if (!body.category?.trim()) return c.json({ error: "category is required" }, 400);
+  const numericError = validateToolNumerics(body);
+  if (numericError) return c.json({ error: numericError }, 400);
 
   // Validate webhook URL for SSRF before storing
   if (body.webhookUrl) {
@@ -170,7 +187,7 @@ toolsRouter.patch("/:id/submit", requireAuth, requireRole("moderator"), async (c
     .set({ toolStatus: "pending_approval", rejectionReason: null, updatedAt: new Date() })
     .where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt)))
     .returning();
-  return c.json({ data: updated });
+  return c.json({ data: sanitizeToolForClient(updated) });
 });
 
 // PATCH /api/tools/:id/status — admin approves/rejects/archives
@@ -239,7 +256,7 @@ toolsRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (c) =>
     ip: c.req.header("x-forwarded-for") ?? null,
   });
 
-  return c.json({ data: updated });
+  return c.json({ data: sanitizeToolForClient(updated) });
 });
 
 // PATCH /api/tools/:id/visibility — moderator/admin toggles public/private
@@ -262,7 +279,7 @@ toolsRouter.patch("/:id/visibility", requireAuth, requireRole("moderator"), asyn
     updates.isActive = false;
   }
   const [updated] = await db.update(aiTools).set(updates).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).returning();
-  return c.json({ data: updated });
+  return c.json({ data: sanitizeToolForClient(updated) });
 });
 
 // POST /api/tools/:id/access — moderator grants access to a user
@@ -460,6 +477,9 @@ toolsRouter.patch("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c)
       return c.json({ error: "Webhook URL validation failed" }, 400);
     }
   }
+
+  const numericError = validateToolNumerics(body);
+  if (numericError) return c.json({ error: numericError }, 400);
 
   const updates: Partial<typeof aiTools.$inferInsert> = { updatedAt: new Date() };
   if (body.name !== undefined) updates.name = body.name.trim();

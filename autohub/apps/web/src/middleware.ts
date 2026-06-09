@@ -11,12 +11,12 @@ export default auth((req) => {
   const isProtected = protectedRoutes.some((r) => pathname.startsWith(r));
   const isAdmin = adminRoutes.some((r) => pathname.startsWith(r));
 
-  if (isProtected && !session) {
+  if ((isProtected || isAdmin) && !session) {
     return NextResponse.redirect(new URL("/auth/login", req.url));
   }
 
   // MFA step-up: session exists but TOTP not yet completed
-  if (isProtected && session?.mfaPending) {
+  if ((isProtected || isAdmin) && session?.mfaPending) {
     return NextResponse.redirect(new URL("/auth/mfa", req.url));
   }
 

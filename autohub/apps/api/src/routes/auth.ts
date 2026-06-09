@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { randomBytes, randomUUID, createHmac } from "crypto";
-import { eq, isNull, and } from "drizzle-orm";
+import { eq, isNull, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { users, userRoles, credits, passwordResetTokens, emailVerificationTokens, sessions, mfaBackupCodes, consentLogs } from "../db/schema.js";
 import { RegisterSchema, LoginSchema, CURRENT_POLICY_VERSION } from "@autohub/shared";
@@ -33,11 +33,13 @@ authRouter.use("/mfa/disable", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, R
 authRouter.use("/mfa/challenge", rateLimitIpStrict(RATE_LIMITS.AUTH_ACTIONS.max, RATE_LIMITS.AUTH_ACTIONS.windowMs));
 
 authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
-  const { email, password, fullName } = c.req.valid("json");
+  const { email: rawEmail, password, fullName } = c.req.valid("json");
+  const email = rawEmail.trim().toLowerCase();
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
   const requestId = (c.get as any)("requestId");
 
-  const existing = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  // Case-insensitive: also catches legacy rows stored with mixed case
+  const existing = await db.select().from(users).where(sql`lower(${users.email}) = ${email}`).limit(1);
   if (existing.length > 0) {
     return c.json({ error: "Email already registered" }, 409);
   }
@@ -103,7 +105,7 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;
   const requestId = (c.get as any)("requestId");
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const [user] = await db.select().from(users).where(sql`lower(${users.email}) = ${email.trim().toLowerCase()}`).limit(1);
   if (!user) {
     await logAuditEvent({ action: "auth.login.failure", metadata: { reason: "user_not_found" }, ip, requestId });
     return c.json({ error: "Invalid credentials" }, 401);
@@ -113,6 +115,11 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   if (!valid) {
     await logAuditEvent({ userId: user.id, action: "auth.login.failure", metadata: { reason: "wrong_password" }, ip, requestId });
     return c.json({ error: "Invalid credentials" }, 401);
+  }
+
+  if (!user.isActive || user.deletedAt) {
+    await logAuditEvent({ userId: user.id, action: "auth.login.failure", metadata: { reason: "account_deactivated" }, ip, requestId });
+    return c.json({ error: "Account is deactivated" }, 403);
   }
 
   const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, user.id)).limit(1);
@@ -193,7 +200,7 @@ authRouter.post("/reset/request", async (c) => {
   const [user] = await db
     .select({ id: users.id, email: users.email })
     .from(users)
-    .where(eq(users.email, body.email.trim().toLowerCase()))
+    .where(sql`lower(${users.email}) = ${body.email.trim().toLowerCase()}`)
     .limit(1);
 
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null;

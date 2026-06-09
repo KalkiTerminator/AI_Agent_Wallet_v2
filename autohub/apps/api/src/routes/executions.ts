@@ -56,12 +56,17 @@ executionsRouter.post("/:id/callback", async (c) => {
     const secret = await decrypt(tool.signingSecretEncrypted);
     const valid = verifySignature({ secret, timestamp, executionId: id, rawBody, signature });
     if (!valid) return c.json({ error: "Invalid signature" }, 401);
-  } else if (tool.signingSecretHash) {
-    // Legacy tool not yet backfilled: reject callback until backfill runs
-    return c.json({ error: "Tool signing not configured; run backfill" }, 503);
+  } else {
+    // Never accept unsigned callbacks — every tool gets a signing secret at creation
+    return c.json({ error: "Tool signing not configured" }, 503);
   }
 
-  const payload = JSON.parse(rawBody) as { success?: boolean; output?: unknown; error?: string };
+  let payload: { success?: boolean; output?: unknown; error?: string };
+  try {
+    payload = JSON.parse(rawBody);
+  } catch {
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const isSuccess = payload.success !== false;
 
   if (isSuccess) {

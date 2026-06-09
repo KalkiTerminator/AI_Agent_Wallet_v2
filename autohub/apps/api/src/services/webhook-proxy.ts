@@ -188,8 +188,7 @@ export class WebhookProxyService {
       const sig = signPayload(secret, timestamp, execution.id, body);
       headers["X-AutoHub-Timestamp"] = timestamp;
       headers["X-AutoHub-Signature"] = sig;
-    } else if (tool.signingSecretHash) {
-      // Legacy: old tool not yet backfilled — skip signing and alert
+    } else {
       const Sentry = await import("@sentry/node");
       Sentry.captureMessage(`Tool ${tool.id} has no signingSecretEncrypted; signing skipped`, "warning");
     }
@@ -331,7 +330,7 @@ export class WebhookProxyService {
       const sig = signPayload(secret, timestamp, execution.id, body);
       headers["X-AutoHub-Timestamp"] = timestamp;
       headers["X-AutoHub-Signature"] = sig;
-    } else if (tool.signingSecretHash) {
+    } else {
       const Sentry = await import("@sentry/node");
       Sentry.captureMessage(`Tool ${tool.id} has no signingSecretEncrypted; signing skipped`, "warning");
     }
@@ -340,14 +339,19 @@ export class WebhookProxyService {
     const dispatchController = new AbortController();
     const dispatchTimer = setTimeout(() => dispatchController.abort(), 30_000);
     fetch(webhookUrl, { method: "POST", headers, body, signal: dispatchController.signal })
-      .catch((err) => {
-        db.update(executions)
-          .set({
-            status: "failed",
-            error: err.name === "AbortError" ? "Webhook dispatch timeout" : "Failed to reach webhook",
-            completedAt: new Date(),
-          })
-          .where(eq(executions.id, execution.id));
+      .catch(async (err) => {
+        try {
+          await db.update(executions)
+            .set({
+              status: "failed",
+              error: err.name === "AbortError" ? "Webhook dispatch timeout" : "Failed to reach webhook",
+              completedAt: new Date(),
+            })
+            .where(eq(executions.id, execution.id));
+        } catch (dbErr) {
+          const Sentry = await import("@sentry/node");
+          Sentry.captureException(dbErr);
+        }
       })
       .finally(() => clearTimeout(dispatchTimer));
 

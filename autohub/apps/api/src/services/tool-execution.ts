@@ -2,6 +2,35 @@ import { eq, sql, and, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { aiTools, toolUsages, credits, webhookExecutionLog } from "../db/schema.js";
 import type { ToolUsageStatus } from "@autohub/shared";
+import { decrypt } from "./crypto.js";
+import { signPayload } from "./hmac.js";
+import { validateOutboundUrl, SSRFError } from "./url-guard.js";
+
+// Builds outbound webhook headers: creator-supplied auth header + HMAC signature
+async function buildWebhookHeaders(
+  tool: { signingSecretEncrypted: string | null; authHeaderEncrypted: string | null },
+  usageId: string,
+  body: string,
+): Promise<Record<string, string>> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+
+  if (tool.authHeaderEncrypted) {
+    const authHeader = await decrypt(tool.authHeaderEncrypted);
+    const [headerName, ...rest] = authHeader.split(":");
+    if (headerName && rest.length) {
+      headers[headerName.trim()] = rest.join(":").trim();
+    }
+  }
+
+  if (tool.signingSecretEncrypted) {
+    const secret = await decrypt(tool.signingSecretEncrypted);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    headers["X-AutoHub-Timestamp"] = timestamp;
+    headers["X-AutoHub-Signature"] = signPayload(secret, timestamp, usageId, body);
+  }
+
+  return headers;
+}
 
 interface ExecuteParams {
   toolId: string;
@@ -88,13 +117,18 @@ export class ToolExecutionService {
       });
     }
 
-    if (!tool.webhookUrl) {
+    // Resolve webhook URL — new tools store it encrypted; legacy rows may have plaintext
+    const webhookUrl = tool.webhookUrlEncrypted
+      ? await decrypt(tool.webhookUrlEncrypted)
+      : tool.webhookUrl;
+
+    if (!webhookUrl) {
       await db.update(toolUsages).set({ status: "success", completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
-      return { usageId: usage.id, status: "success" as ToolUsageStatus, creditsDeducted: tool.creditCost };
+      return { usageId: usage.id, status: "success" as ToolUsageStatus, creditsDeducted: isAdmin ? 0 : tool.creditCost };
     }
 
     // Phase 2: Call webhook (outside transaction, with retry)
-    const result = await this.callWebhookWithRetry({ tool, usage, inputs });
+    const result = await this.callWebhookWithRetry({ tool, usage, inputs, webhookUrl, isAdmin });
     return result;
   }
 
@@ -122,10 +156,15 @@ export class ToolExecutionService {
     const isOwner = tool.createdByUserId === userId;
     if (!isAdmin && !isOwner) throw Object.assign(new Error("Forbidden"), { status: 403 });
 
+    const safeInputs = redactPhiFields(
+      inputs,
+      (tool.inputFields as Array<{ name: string; isPhi?: boolean }>) ?? [],
+    );
+
     const [usage] = await db.insert(toolUsages).values({
       userId,
       toolId,
-      inputData: inputs,
+      inputData: safeInputs,
       creditsUsed: 0,
       status: "sandbox" as any,
       ipAddress: ip,
@@ -136,14 +175,16 @@ export class ToolExecutionService {
       return { usageId: usage.id, status: "sandbox", creditsDeducted: 0 };
     }
 
-    const { decrypt } = await import("./crypto.js");
     const webhookUrl = tool.webhookUrlEncrypted
       ? await decrypt(tool.webhookUrlEncrypted)
       : tool.webhookUrl!;
 
     try {
+      // SSRF guard on every call — creation-time validation alone doesn't stop DNS rebinding
+      await validateOutboundUrl(webhookUrl);
+
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), tool.webhookTimeout * 1000);
+      const timeout = setTimeout(() => controller.abort(), Math.min(tool.webhookTimeout ?? 30, 300) * 1000);
       const res = await fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Autohub-Sandbox": "true" },
@@ -165,13 +206,21 @@ export class ToolExecutionService {
     tool,
     usage,
     inputs,
+    webhookUrl,
+    isAdmin,
   }: {
-    tool: { id: string; webhookUrl: string | null; webhookTimeout: number; webhookRetries: number; creditCost: number };
+    tool: { id: string; webhookTimeout: number; webhookRetries: number; creditCost: number; signingSecretEncrypted: string | null; authHeaderEncrypted: string | null };
     usage: { id: string; userId: string };
     inputs: Record<string, unknown>;
+    webhookUrl: string;
+    isAdmin: boolean;
   }) {
     const maxAttempts = tool.webhookRetries + 1;
     const delays = [0, 2000, 8000]; // 0s, 2s, 8s
+    const creditsDeducted = isAdmin ? 0 : tool.creditCost;
+
+    const body = JSON.stringify({ usageId: usage.id, inputs });
+    const headers = await buildWebhookHeaders(tool, usage.id, body);
 
     let lastError: Error | null = null;
     let outputData: unknown = null;
@@ -181,13 +230,16 @@ export class ToolExecutionService {
 
       const start = Date.now();
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), tool.webhookTimeout * 1000);
+        // SSRF guard on every attempt — also defeats DNS rebinding after creation-time validation
+        await validateOutboundUrl(webhookUrl);
 
-        const res = await fetch(tool.webhookUrl!, {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), Math.min(tool.webhookTimeout ?? 30, 300) * 1000);
+
+        const res = await fetch(webhookUrl, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ usageId: usage.id, inputs }),
+          headers,
+          body,
           signal: controller.signal,
         }).finally(() => clearTimeout(timeout));
 
@@ -204,7 +256,7 @@ export class ToolExecutionService {
           });
 
           await db.update(toolUsages).set({ status: "success", outputData, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
-          return { usageId: usage.id, status: "success" as ToolUsageStatus, output: outputData, creditsDeducted: tool.creditCost };
+          return { usageId: usage.id, status: "success" as ToolUsageStatus, output: outputData, creditsDeducted };
         }
 
         lastError = new Error(`Webhook returned ${res.status}`);
@@ -229,13 +281,18 @@ export class ToolExecutionService {
           durationMs,
           errorMessage: lastError.message,
         });
+
+        // SSRF rejection is deterministic — retrying won't help
+        if (err instanceof SSRFError) break;
       }
     }
 
-    // All attempts failed — refund credits
-    await db.execute(
-      sql`UPDATE credits SET current_credits = current_credits + ${tool.creditCost} WHERE user_id = ${usage.userId}`
-    );
+    // All attempts failed — refund credits (admins were never charged)
+    if (!isAdmin) {
+      await db.execute(
+        sql`UPDATE credits SET current_credits = current_credits + ${tool.creditCost} WHERE user_id = ${usage.userId}`
+      );
+    }
     await db.update(toolUsages).set({ status: "refunded", errorMessage: lastError?.message, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
 
     return { usageId: usage.id, status: "refunded" as ToolUsageStatus, creditsDeducted: 0 };

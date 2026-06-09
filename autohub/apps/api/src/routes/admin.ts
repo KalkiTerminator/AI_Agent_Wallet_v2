@@ -238,7 +238,16 @@ adminRouter.patch("/tools/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
     });
   }
 
-  return c.json({ data: updated });
+  // Never send encrypted blobs to the client
+  return c.json({
+    data: {
+      ...updated,
+      webhookUrl: undefined,
+      webhookUrlEncrypted: undefined,
+      authHeaderEncrypted: undefined,
+      signingSecretEncrypted: undefined,
+    },
+  });
 });
 
 // GET /api/admin/roles — list available roles
