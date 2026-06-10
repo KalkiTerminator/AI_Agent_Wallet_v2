@@ -1,60 +1,151 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
-import { Zap, ArrowRight } from "lucide-react";
+
+function rise(ms: number): CSSProperties {
+  return { "--rise-delay": `${ms}ms` } as CSSProperties;
+}
+
+const TERMINAL_LINES = [
+  { delay: 900, text: "$ autohub run summarize-q3 --input report.pdf", tone: "cmd" },
+  { delay: 1150, text: "→ POST hooks.n8n.cloud/webhook/summarize", tone: "dim" },
+  { delay: 1400, text: "→ signature sha256 ✓ · resolved 104.21.6.42", tone: "dim" },
+  { delay: 1700, text: "✓ executed in 1.24s — 1 credit debited", tone: "ok" },
+  { delay: 2000, text: "$ autohub run brand-kit --prompt \"launch teaser\"", tone: "cmd" },
+  { delay: 2250, text: "⠿ dispatching async · callback armed", tone: "warn" },
+] as const;
+
+const MARQUEE_ITEMS = [
+  "Text Processing", "Image Generation", "Language Processing", "Development",
+  "Marketing", "Communication", "Sales", "Webhook Automation", "n8n", "Zapier",
+];
 
 export function HeroSection() {
   return (
-    <section className="relative min-h-screen aurora-bg gradient-mesh flex items-center justify-center overflow-hidden">
-      {/* Floating orbs */}
-      <div className="orb orb-primary w-[500px] h-[500px] -top-32 -left-32" style={{ animationDelay: "0s" }} />
-      <div className="orb orb-pink w-[450px] h-[450px] -top-16 -right-24" style={{ animationDelay: "2s" }} />
-      <div className="orb orb-teal w-[350px] h-[350px] bottom-16 left-1/4" style={{ animationDelay: "4s" }} />
+    <section className="relative min-h-screen flex flex-col justify-center overflow-hidden bg-noise">
+      {/* Blueprint grid backdrop */}
+      <div className="absolute inset-0 bg-blueprint bg-blueprint-fade pointer-events-none" />
+      {/* Signal glows */}
+      <div className="orb orb-primary w-[560px] h-[560px] -top-40 -right-40" />
+      <div className="orb orb-pink w-[420px] h-[420px] bottom-0 -left-32" style={{ animationDelay: "3s" }} />
 
-      {/* Mesh grid overlay */}
-      <div
-        className="absolute inset-0 opacity-[0.03] pointer-events-none"
-        style={{
-          backgroundImage: "linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)",
-          backgroundSize: "80px 80px",
-        }}
-      />
+      {/* Decorative crosshairs */}
+      <span aria-hidden className="absolute top-28 left-[8%] font-mono text-muted-foreground/40 select-none">+</span>
+      <span aria-hidden className="absolute top-[55%] right-[6%] font-mono text-muted-foreground/40 select-none">+</span>
+      <span aria-hidden className="absolute bottom-36 left-[42%] font-mono text-muted-foreground/40 select-none">+</span>
 
-      <div className="relative z-10 max-w-4xl mx-auto px-4 text-center space-y-6 pt-20">
-        {/* Animated badge */}
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass border-glow text-xs font-medium">
-          <span className="status-dot status-dot-active" />
-          Webhook automation marketplace — now live
-          <ArrowRight className="h-3 w-3 text-primary" />
-        </div>
+      <div className="relative z-10 max-w-6xl mx-auto px-5 w-full pt-32 pb-10 grid lg:grid-cols-12 gap-12 items-center">
+        {/* ── Left: headline block ── */}
+        <div className="lg:col-span-7 space-y-7">
+          <div className="rise inline-flex items-center gap-3" style={rise(0)}>
+            <span className="status-dot status-dot-active" />
+            <span className="microlabel microlabel-signal">SYS.01 / Webhook console — online</span>
+          </div>
 
-        {/* Gradient headline */}
-        <h1 className="text-5xl md:text-7xl font-display font-bold leading-tight">
-          Supercharge your<br />
-          <span className="text-gradient">workflows</span>
-        </h1>
+          <h1 className="font-display font-bold leading-[0.95] text-[clamp(2.9rem,7.5vw,5.6rem)] tracking-tight">
+            <span className="rise block" style={rise(100)}>Mission control</span>
+            <span className="rise block" style={rise(220)}>for your <span className="text-gradient">AI&nbsp;tools.</span></span>
+          </h1>
 
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
-          Register your n8n webhooks as tools. Share them with your team.
-          Run automations from a unified dashboard with credit-based billing.
-        </p>
+          <p className="rise text-base md:text-lg text-muted-foreground max-w-xl leading-relaxed" style={rise(360)}>
+            Register any n8n or Zapier webhook as a tool. Share it with your team,
+            run it from one console, and pay per execution — every call HMAC-signed
+            and SSRF-guarded.
+          </p>
 
-        {/* CTA pair */}
-        <div className="flex items-center justify-center gap-4">
-          <Button asChild variant="hero" size="lg" className="border-glow shadow-glow">
-            <Link href="/auth/signup">
-              <Zap className="h-4 w-4 mr-2" />
-              Start for Free
+          <div className="rise flex flex-wrap items-center gap-4" style={rise(480)}>
+            <Button asChild size="lg" className="h-12 px-7 rounded-sm font-mono text-xs uppercase tracking-[0.18em] shadow-glow hover:shadow-hard hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-300 ease-out-expo">
+              <Link href="/auth/signup">Start free — 10 credits</Link>
+            </Button>
+            <Link
+              href="/features"
+              className="link-slide font-mono text-xs uppercase tracking-[0.18em] text-foreground/80 hover:text-foreground transition-colors"
+            >
+              See how it works ↗
             </Link>
-          </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link href="/features">See How It Works</Link>
-          </Button>
+          </div>
+
+          {/* Telemetry strip */}
+          <div className="rise grid grid-cols-3 max-w-md gap-px bg-border/60 border border-border/60 mt-2" style={rise(600)}>
+            {[
+              { k: "EXEC / DAY", v: "12,400+" },
+              { k: "TOOLS LIVE", v: "180+" },
+              { k: "UPTIME", v: "99.98%" },
+            ].map((s) => (
+              <div key={s.k} className="bg-background/80 backdrop-blur px-4 py-3">
+                <p className="font-mono text-lg font-semibold text-foreground tabular-nums">{s.v}</p>
+                <p className="microlabel mt-1">{s.k}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
-        <p className="text-xs text-muted-foreground pt-4">
-          No credit card required &nbsp;·&nbsp; 10 free credits on signup
-        </p>
+        {/* ── Right: terminal panel ── */}
+        <div className="lg:col-span-5 rise" style={rise(420)}>
+          <div className="tick-frame tick-signal glass scanline rounded-none border border-border bg-card/80">
+            {/* Title bar */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-border/70">
+              <span className="microlabel">AUTOHUB.TERMINAL</span>
+              <div className="flex items-center gap-2">
+                <span className="h-1.5 w-1.5 rounded-full bg-destructive/70" />
+                <span className="h-1.5 w-1.5 rounded-full bg-warning/70" />
+                <span className="h-1.5 w-1.5 rounded-full bg-success/70" />
+              </div>
+            </div>
+            {/* Log body */}
+            <div className="px-4 py-4 font-mono text-[11.5px] leading-[1.9] min-h-[210px]">
+              {TERMINAL_LINES.map((l) => (
+                <p
+                  key={l.text}
+                  className={`rise ${
+                    l.tone === "ok"
+                      ? "text-primary"
+                      : l.tone === "warn"
+                      ? "text-warning"
+                      : l.tone === "dim"
+                      ? "text-muted-foreground"
+                      : "text-foreground"
+                  }`}
+                  style={rise(l.delay)}
+                >
+                  {l.text}
+                </p>
+              ))}
+              <p className="rise caret-blink text-muted-foreground" style={rise(2400)}>$</p>
+            </div>
+            {/* Status footer */}
+            <div className="flex items-center justify-between px-4 py-2 border-t border-border/70">
+              <span className="microlabel">CREDITS: 09</span>
+              <span className="microlabel microlabel-signal">● LINK SECURE</span>
+            </div>
+          </div>
+          <p className="font-mono text-[10px] text-muted-foreground/60 mt-3 text-right tracking-[0.2em] uppercase">
+            fig. 01 — live execution feed
+          </p>
+        </div>
       </div>
+
+      {/* ── Category marquee ── */}
+      <div className="relative z-10 border-y border-border/60 py-3 mt-6 rise" style={rise(700)}>
+        <div className="marquee">
+          <div className="marquee-track gap-0">
+            {[0, 1].map((copy) => (
+              <div key={copy} className="flex shrink-0" aria-hidden={copy === 1}>
+                {MARQUEE_ITEMS.map((item) => (
+                  <span key={`${copy}-${item}`} className="flex items-center font-mono text-[11px] uppercase tracking-[0.25em] text-muted-foreground whitespace-nowrap">
+                    <span className="px-6">{item}</span>
+                    <span className="text-primary">✦</span>
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <p className="relative z-10 text-center font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/70 py-5 rise" style={rise(800)}>
+        No credit card required · 10 free credits on signup
+      </p>
     </section>
   );
 }

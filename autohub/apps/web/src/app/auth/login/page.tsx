@@ -1,12 +1,14 @@
 import { LoginForm } from "@/components/auth/LoginForm";
+import { AuthShell } from "@/components/auth/AuthShell";
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="glass p-8 rounded-xl w-full max-w-md">
-        <h1 className="text-2xl font-display font-bold mb-6">Sign in to AutoHub</h1>
-        <LoginForm />
-      </div>
-    </div>
+    <AuthShell
+      step="ACCESS / SIGN IN"
+      title="Welcome back, operator"
+      subtitle="Authenticate to resume your session."
+    >
+      <LoginForm />
+    </AuthShell>
   );
 }

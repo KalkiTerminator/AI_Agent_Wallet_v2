@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CheckCircle } from "lucide-react";
+import { Reveal } from "@/components/shared/Reveal";
 
 const plans = [
   {
+    tier: "TIER 0",
     name: "Starter",
     price: "$0",
     period: "forever",
@@ -14,6 +15,7 @@ const plans = [
     highlight: false,
   },
   {
+    tier: "TIER 1",
     name: "Pro",
     price: "$12",
     period: "/ month",
@@ -24,6 +26,7 @@ const plans = [
     highlight: true,
   },
   {
+    tier: "TIER 2",
     name: "Credit Pack",
     price: "$5",
     period: "one-time",
@@ -37,52 +40,78 @@ const plans = [
 
 export function PricingSection() {
   return (
-    <section id="pricing" className="py-24 px-4 gradient-subtle">
-      <div className="max-w-5xl mx-auto space-y-12">
-        <div className="text-center space-y-3">
-          <h2 className="text-3xl md:text-4xl font-display font-bold">
-            Simple, <span className="text-gradient">transparent pricing</span>
-          </h2>
-          <p className="text-muted-foreground">Pay only for what you use. No hidden fees.</p>
-        </div>
+    <section id="pricing" className="relative py-28 px-5 overflow-hidden">
+      <div className="absolute inset-0 gradient-mesh pointer-events-none" />
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`glass rounded-2xl p-6 space-y-5 flex flex-col ${
-                plan.highlight ? "border-primary/50 shadow-glow ring-1 ring-primary/20" : ""
-              }`}
-            >
-              {plan.highlight && (
-                <div className="text-[10px] font-semibold text-primary uppercase tracking-wider">Most Popular</div>
-              )}
-              <div>
-                <p className="text-sm font-semibold text-muted-foreground">{plan.name}</p>
-                <div className="flex items-end gap-1 mt-1">
-                  <span className="text-3xl font-display font-bold">{plan.price}</span>
-                  <span className="text-xs text-muted-foreground pb-1">{plan.period}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{plan.credits}</p>
-              </div>
-              <ul className="space-y-2 flex-1">
-                {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2 text-xs">
-                    <CheckCircle className="h-3.5 w-3.5 text-success shrink-0 mt-0.5" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                asChild
-                variant={plan.highlight ? "hero" : "outline"}
-                className={plan.highlight ? "border-glow" : ""}
+      <div className="relative max-w-5xl mx-auto">
+        <Reveal className="mb-16 space-y-4 text-center">
+          <p className="microlabel microlabel-signal">SYS.03 / Access tiers</p>
+          <h2 className="font-display font-bold tracking-tight leading-[1.02] text-[clamp(2rem,4.5vw,3.4rem)]">
+            Simple, <span className="text-gradient">metered pricing.</span>
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            One credit ≈ one execution. No hidden fees, no lock-in.
+          </p>
+        </Reveal>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
+          {plans.map((plan, i) => (
+            <Reveal key={plan.name} delay={i * 110} className="h-full">
+              <div
+                className={`tick-frame relative h-full flex flex-col bg-card border p-7 transition-all duration-500 ease-out-expo hover:-translate-y-2 ${
+                  plan.highlight
+                    ? "tick-signal border-primary/60 shadow-glow md:-translate-y-3 md:hover:-translate-y-5"
+                    : "border-border hover:border-foreground/30 hover:shadow-large"
+                }`}
               >
-                <Link href={plan.href}>{plan.cta}</Link>
-              </Button>
-            </div>
+                {plan.highlight && (
+                  <div className="absolute -top-px left-1/2 -translate-x-1/2 bg-primary text-primary-foreground font-mono text-[9px] uppercase tracking-[0.3em] px-3 py-1">
+                    Recommended
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mb-6">
+                  <span className="microlabel">{plan.tier}</span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${plan.highlight ? "bg-primary animate-pulse-glow" : "bg-muted-foreground/50"}`} />
+                </div>
+
+                <p className="font-display font-semibold text-xl tracking-tight">{plan.name}</p>
+                <div className="flex items-end gap-2 mt-3">
+                  <span className="font-display font-bold text-5xl tracking-tight tabular-nums">{plan.price}</span>
+                  <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground pb-2">{plan.period}</span>
+                </div>
+                <p className="font-mono text-[11px] text-primary mt-1.5">{plan.credits}</p>
+
+                <div className="h-px bg-border my-6" />
+
+                <ul className="space-y-3 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-3 text-[13px] text-foreground/85 leading-snug">
+                      <span className="font-mono text-primary text-xs mt-px select-none">+</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                <Button
+                  asChild
+                  variant={plan.highlight ? "default" : "outline"}
+                  className={`mt-8 w-full rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] h-11 ${
+                    plan.highlight ? "shadow-glow" : ""
+                  }`}
+                >
+                  <Link href={plan.href}>{plan.cta}</Link>
+                </Button>
+              </div>
+            </Reveal>
           ))}
         </div>
+
+        <Reveal delay={150} className="mt-10 text-center">
+          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">
+            fig. 03 — access matrix · all tiers include HMAC signing & SSRF guard
+          </p>
+        </Reveal>
       </div>
     </section>
   );

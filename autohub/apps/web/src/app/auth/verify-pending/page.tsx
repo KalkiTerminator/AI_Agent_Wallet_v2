@@ -1,10 +1,19 @@
+import { AuthShell } from "@/components/auth/AuthShell";
+
 export default function VerifyPendingPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="glass rounded-2xl p-8 max-w-md w-full text-center space-y-4">
-        <div className="text-4xl">📧</div>
-        <h1 className="font-display font-bold text-xl">Check your email</h1>
-        <p className="text-sm text-muted-foreground">
+    <AuthShell
+      step="ACCESS / VERIFY"
+      title="Check your email"
+      subtitle="A verification link is on its way."
+    >
+      <div className="space-y-5 py-2">
+        <div className="border border-border bg-muted/30 px-4 py-3 font-mono text-[11px] leading-relaxed text-muted-foreground">
+          <p className="text-primary">→ verification link dispatched</p>
+          <p>→ awaiting confirmation…</p>
+          <p className="caret-blink" />
+        </div>
+        <p className="text-sm text-muted-foreground leading-relaxed">
           We sent a verification link to your email address. Click the link to activate your account.
         </p>
         <p className="text-xs text-muted-foreground">
@@ -13,6 +22,6 @@ export default function VerifyPendingPage() {
           to resend.
         </p>
       </div>
-    </div>
+    </AuthShell>
   );
 }

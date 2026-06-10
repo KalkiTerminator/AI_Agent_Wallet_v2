@@ -101,6 +101,8 @@ export default {
         "slide-up": "slideUp 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
         float: "float 6s ease-in-out infinite",
         "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        marquee: "marquee 36s linear infinite",
+        "spin-slow": "spinSlow 14s linear infinite",
       },
       boxShadow: {
         "2xs": "var(--shadow-2xs)",
@@ -112,10 +114,10 @@ export default {
         "2xl": "var(--shadow-2xl)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif"],
-        display: ["Plus Jakarta Sans", "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "SF Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
-        serif: ["Crimson Pro", "ui-serif", "Georgia", "Cambria", "Times New Roman", "Times", "serif"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
+        display: ["var(--font-display)", "var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "SF Mono", "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
+        serif: ["ui-serif", "Georgia", "Cambria", "Times New Roman", "Times", "serif"],
       },
     },
   },

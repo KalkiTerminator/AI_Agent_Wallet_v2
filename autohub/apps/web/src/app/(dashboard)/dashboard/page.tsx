@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo, useEffect, Suspense } from "react";
+import { useState, useMemo, useEffect, Suspense, type CSSProperties } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCredits } from "@/hooks/useCredits";
@@ -40,32 +40,32 @@ function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onU
     : "autohub";
 
   return (
-    <div className="bg-card border border-border rounded-xl p-4 flex flex-col gap-3 hover:border-primary/40 hover:shadow-sm transition-all">
+    <div className="tick-frame group bg-card border border-border p-4 flex flex-col gap-3 hover:border-primary/50 hover:-translate-y-1 hover:shadow-glow transition-all duration-300 ease-out-expo">
       <div className="flex items-start justify-between">
-        <div className="flex-1" />
+        <span className="status-dot status-dot-active opacity-60 group-hover:opacity-100 transition-opacity mt-1" />
         <Badge
           variant="secondary"
-          className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-muted text-muted-foreground"
+          className="text-[10px] font-mono px-2 py-0.5 rounded-none bg-muted text-muted-foreground group-hover:bg-primary/15 group-hover:text-primary transition-colors"
         >
-          {tool.creditCost} cr
+          {tool.creditCost} CR
         </Badge>
       </div>
-      <div className="flex-1 space-y-0.5">
-        <p className="text-sm font-semibold leading-tight">{tool.name}</p>
-        <p className="text-[11px] text-muted-foreground">{authorDisplay}</p>
+      <div className="flex-1 space-y-1">
+        <p className="font-display text-sm font-semibold leading-tight tracking-tight">{tool.name}</p>
+        <p className="font-mono text-[10px] text-muted-foreground truncate">@{authorDisplay}</p>
       </div>
       <div className="flex items-center justify-between">
-        <Badge variant="outline" className="text-[10px] px-2 py-0 h-5 rounded-sm">
+        <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-[0.12em] px-2 py-0 h-5 rounded-none">
           {tool.category}
         </Badge>
         <Button
           size="sm"
           onClick={onUse}
           disabled={!canAfford}
-          className="h-7 text-[11px] px-3 gap-1 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
+          className="h-7 text-[10px] font-mono uppercase tracking-[0.12em] px-3 gap-1 rounded-sm"
         >
           <Play className="h-2.5 w-2.5 fill-current" />
-          Quick
+          Run
         </Button>
       </div>
     </div>
@@ -86,33 +86,34 @@ function AccountPanel({
   const pct = Math.min(100, ((credits ?? 0) / MAX_FREE_CREDITS) * 100);
 
   return (
-    <div className="border border-border rounded-xl p-4 space-y-3 h-fit bg-card">
+    <div className="tick-frame tick-signal border border-border p-4 space-y-4 h-fit bg-card">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold">Account</p>
-        <Zap className="h-4 w-4 text-primary" />
+        <p className="microlabel">Wallet</p>
+        <Zap className="h-3.5 w-3.5 text-primary" />
       </div>
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Credits</span>
-          <span className="font-mono font-semibold text-foreground">{credits ?? "—"}</span>
+      <div>
+        <p className="font-display text-3xl font-bold tabular-nums leading-none">{credits ?? "—"}</p>
+        <p className="microlabel mt-1.5">Credits available</p>
+        <Progress value={pct} className="h-1 mt-3 bg-muted [&>div]:bg-primary" />
+      </div>
+      <div className="h-px bg-border" />
+      <div className="space-y-2 font-mono text-[11px]">
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground uppercase tracking-[0.12em]">Plan</span>
+          <span className="text-foreground">FREE</span>
         </div>
-        <Progress value={pct} className="h-1.5 bg-muted [&>div]:bg-primary" />
-      </div>
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Plan</span>
-        <span className="font-medium">Free</span>
-      </div>
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Live</span>
-        <span className="font-medium">{liveCount}</span>
-      </div>
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">Soon</span>
-        <span className="font-medium">{soonCount}</span>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground uppercase tracking-[0.12em]">Live</span>
+          <span className="text-primary">{liveCount}</span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-muted-foreground uppercase tracking-[0.12em]">Soon</span>
+          <span className="text-foreground">{soonCount}</span>
+        </div>
       </div>
       <Button
         size="sm"
-        className="w-full h-8 text-xs rounded-full bg-primary hover:bg-primary/90 text-primary-foreground gap-1"
+        className="w-full h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] shadow-glow"
       >
         + Upgrade
       </Button>
@@ -173,12 +174,14 @@ export default function DashboardPage() {
       {/* Main content */}
       <div className="flex-1 overflow-auto flex flex-col min-w-0">
         {/* Top bar */}
-        <div className="flex items-center gap-3 px-6 py-3 border-b border-border shrink-0">
-          <div className="flex-1 text-xs text-muted-foreground flex items-center gap-1">
-            <Zap className="h-3.5 w-3.5 text-primary" />
-            {toolsLoading ? "Loading…" : `${filtered.length} tools`}
+        <div className="flex items-center gap-3 px-6 h-16 border-b border-border shrink-0">
+          <div className="flex-1 flex items-center gap-2">
+            <span className="status-dot status-dot-active" />
+            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+              {toolsLoading ? "Scanning deck…" : `${filtered.length} tools armed`}
+            </span>
           </div>
-          <div className="flex items-center gap-1 border border-border rounded-lg p-0.5">
+          <div className="flex items-center gap-1 border border-border rounded-sm p-0.5">
             <Button
               variant={layout === "grid" ? "secondary" : "ghost"}
               size="sm"
@@ -208,36 +211,40 @@ export default function DashboardPage() {
 
         <div className="px-6 py-6 space-y-6 flex-1">
           {/* Welcome header */}
-          <div>
-            <h1 className="text-2xl font-bold">
-              Welcome back, <span className="text-primary">{displayName}</span>
+          <div className="rise" style={{ "--rise-delay": "0ms" } as CSSProperties}>
+            <p className="microlabel microlabel-signal mb-2">Console / Tool deck</p>
+            <h1 className="font-display text-3xl font-bold tracking-tight">
+              Welcome back, <span className="text-gradient">{displayName}</span>
             </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Choose from powerful AI tools to supercharge your workflow
+            <p className="text-sm text-muted-foreground mt-1.5">
+              Choose an instrument. Every execution is signed, metered, and logged.
             </p>
           </div>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative rise" style={{ "--rise-delay": "90ms" } as CSSProperties}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search AI tools..."
+              placeholder="Search the deck…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 h-10 rounded-xl bg-muted/40 border-border/60"
+              className="pl-10 h-11 rounded-sm bg-muted/40 border-border/60 font-mono text-sm focus-visible:ring-primary"
             />
+            <kbd className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[9px] uppercase tracking-[0.15em] text-muted-foreground/60 border border-border px-1.5 py-0.5 hidden sm:block">
+              ⌘K
+            </kbd>
           </div>
 
           {/* Category tabs */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap rise" style={{ "--rise-delay": "180ms" } as CSSProperties}>
             {["All", ...TOOL_CATEGORIES].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
-                className={`px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                className={`px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] border transition-all duration-300 ${
                   category === cat
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
                 }`}
               >
                 {cat}
@@ -246,13 +253,14 @@ export default function DashboardPage() {
           </div>
 
           {/* Featured Tools */}
-          <div>
-            <div className="flex items-center gap-2 mb-4">
-              <Zap className="h-4 w-4 text-primary" />
-              <h2 className="text-sm font-semibold">Featured Tools</h2>
-              <Badge className="text-[10px] bg-primary/10 text-primary border border-primary/30 rounded-full px-2 py-0">
-                Live
+          <div className="rise" style={{ "--rise-delay": "270ms" } as CSSProperties}>
+            <div className="flex items-center gap-2.5 mb-4">
+              <Zap className="h-3.5 w-3.5 text-primary" />
+              <h2 className="microlabel !text-foreground">Featured tools</h2>
+              <Badge className="font-mono text-[9px] uppercase tracking-[0.15em] bg-primary/10 text-primary border border-primary/30 rounded-none px-2 py-0">
+                ● Live
               </Badge>
+              <div className="flex-1 h-px bg-border" />
             </div>
 
             {toolsLoading ? (

@@ -92,8 +92,8 @@ export function LoginForm() {
         <p role="alert" data-testid="server-error" className="text-sm text-destructive">{serverError}</p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Signing in…" : "Sign in"}
+      <Button type="submit" className="w-full h-11 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em]" disabled={isSubmitting}>
+        {isSubmitting ? "Authenticating…" : "Sign in →"}
       </Button>
 
       <p className="text-center text-sm text-muted-foreground">

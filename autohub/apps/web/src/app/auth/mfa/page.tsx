@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { env } from "@/lib/env";
+import { AuthShell } from "@/components/auth/AuthShell";
 
 const API_BASE = env.NEXT_PUBLIC_API_URL;
 
@@ -44,32 +45,30 @@ export default function MfaChallengePage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="glass rounded-2xl p-8 max-w-sm w-full space-y-6">
-        <div className="space-y-1">
-          <h1 className="font-display font-bold text-xl">Two-factor authentication</h1>
-          <p className="text-xs text-muted-foreground">Enter the 6-digit code from your authenticator app.</p>
+    <AuthShell
+      step="ACCESS / STEP-UP"
+      title="Two-factor authentication"
+      subtitle="Enter the 6-digit code from your authenticator app."
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-1.5">
+          <Label htmlFor="code" className="microlabel">Authentication code</Label>
+          <Input
+            id="code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            placeholder="000000"
+            maxLength={8}
+            autoComplete="one-time-code"
+            className="h-12 font-mono text-lg tracking-[0.5em] text-center rounded-sm"
+          />
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="code" className="text-xs">Authentication code</Label>
-            <Input
-              id="code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="000000"
-              maxLength={8}
-              autoComplete="one-time-code"
-              className="h-8 text-xs tracking-widest"
-            />
-          </div>
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading || code.length < 6}>
-            {loading && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
-            Verify
-          </Button>
-        </form>
-      </div>
-    </div>
+        {error && <p className="text-xs text-destructive font-mono">⚠ {error}</p>}
+        <Button type="submit" className="w-full h-11 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em]" disabled={loading || code.length < 6}>
+          {loading && <Loader2 className="h-3 w-3 mr-1.5 animate-spin" />}
+          Verify identity
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

@@ -145,8 +145,8 @@ export function SignUpForm() {
         <p role="alert" data-testid="server-error" className="text-sm text-destructive">{serverError}</p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
-        {isSubmitting ? "Creating account…" : "Create account"}
+      <Button type="submit" className="w-full h-11 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em]" disabled={isSubmitting}>
+        {isSubmitting ? "Provisioning…" : "Create account →"}
       </Button>
 
       <p className="text-center text-sm text-muted-foreground">

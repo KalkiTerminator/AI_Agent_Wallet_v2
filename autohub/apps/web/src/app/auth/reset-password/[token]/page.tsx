@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AuthShell } from "@/components/auth/AuthShell";
 
 export default function ResetPasswordConfirmPage() {
   const { token } = useParams<{ token: string }>();
@@ -31,45 +32,44 @@ export default function ResetPasswordConfirmPage() {
   }
 
   return (
-    <main className="min-h-screen aurora-bg gradient-mesh flex items-center justify-center px-4">
-      <div className="w-full max-w-sm glass rounded-2xl p-8 shadow-large">
-        <h1 className="font-display font-bold text-xl mb-1">Set New Password</h1>
-        <p className="text-xs text-muted-foreground mb-6">Choose a password with at least 8 characters.</p>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="space-y-1.5">
-            <Label htmlFor="password" className="text-xs">New Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              className="h-9 text-sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="confirm" className="text-xs">Confirm Password</Label>
-            <Input
-              id="confirm"
-              type="password"
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              required
-              minLength={8}
-              className="h-9 text-sm"
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Saving…" : "Reset Password"}
-          </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            <Link href="/auth/login" className="text-primary hover:underline">Back to login</Link>
-          </p>
-        </form>
-      </div>
-    </main>
+    <AuthShell
+      step="ACCESS / RECOVERY"
+      title="Set new password"
+      subtitle="Choose a password with at least 12 characters."
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {error && <p className="text-xs text-destructive font-mono">⚠ {error}</p>}
+        <div className="space-y-1.5">
+          <Label htmlFor="password" className="microlabel">New password</Label>
+          <Input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={8}
+            className="h-11 rounded-sm"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="confirm" className="microlabel">Confirm password</Label>
+          <Input
+            id="confirm"
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            required
+            minLength={8}
+            className="h-11 rounded-sm"
+          />
+        </div>
+        <Button type="submit" className="w-full h-11 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em]" disabled={loading}>
+          {loading ? "Saving…" : "Reset password"}
+        </Button>
+        <p className="text-center">
+          <Link href="/auth/login" className="link-slide font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors">Back to login</Link>
+        </p>
+      </form>
+    </AuthShell>
   );
 }
