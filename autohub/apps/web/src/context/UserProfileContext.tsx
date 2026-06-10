@@ -19,7 +19,6 @@ interface UserProfileContextValue {
   loading: boolean;
   refetch: () => Promise<void>;
   markOnboarded: () => void;
-  revertOnboarded: () => void;
 }
 
 const UserProfileContext = createContext<UserProfileContextValue>({
@@ -27,7 +26,6 @@ const UserProfileContext = createContext<UserProfileContextValue>({
   loading: true,
   refetch: async () => {},
   markOnboarded: () => {},
-  revertOnboarded: () => {},
 });
 
 export function UserProfileProvider({ children }: { children: React.ReactNode }) {
@@ -57,12 +55,8 @@ export function UserProfileProvider({ children }: { children: React.ReactNode })
     setProfile((prev) => (prev ? { ...prev, onboardedAt: new Date().toISOString() } : prev));
   }, []);
 
-  const revertOnboarded = useCallback(() => {
-    setProfile((prev) => (prev ? { ...prev, onboardedAt: null } : prev));
-  }, []);
-
   return (
-    <UserProfileContext.Provider value={{ profile, loading, refetch: fetchProfile, markOnboarded, revertOnboarded }}>
+    <UserProfileContext.Provider value={{ profile, loading, refetch: fetchProfile, markOnboarded }}>
       {children}
     </UserProfileContext.Provider>
   );

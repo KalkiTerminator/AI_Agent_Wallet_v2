@@ -28,6 +28,7 @@ const app = new Hono();
 app.post("/api/auth/mfa/setup", requireAuth, (c) => c.json({ ok: "setup" }));
 app.post("/api/auth/mfa/verify-setup", requireAuth, (c) => c.json({ ok: "verify" }));
 app.get("/api/account/me", requireAuth, (c) => c.json({ ok: "me" }));
+app.post("/api/account/onboarding/complete", requireAuth, (c) => c.json({ ok: "onboarding" }));
 app.post("/api/tools", requireAuth, (c) => c.json({ ok: "tools" }));
 
 function payload(overrides: Record<string, unknown> = {}) {
@@ -58,6 +59,11 @@ describe("requireAuth — privileged MFA gate", () => {
     expect((await req("/api/auth/mfa/setup")).status).toBe(200);
     expect((await req("/api/auth/mfa/verify-setup")).status).toBe(200);
     expect((await req("/api/account/me", "GET")).status).toBe(200);
+  });
+
+  it("allows admin without MFA to complete onboarding (welcome dialog must not loop)", async () => {
+    mockVerify.mockReturnValue(payload({ role: "admin" }));
+    expect((await req("/api/account/onboarding/complete")).status).toBe(200);
   });
 
   it("allows admin with MFA everywhere", async () => {

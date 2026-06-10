@@ -25,10 +25,13 @@ declare module "hono" {
 // endpoints themselves return 403 mfa_required_for_role, making it
 // impossible to ever enable MFA. /account/me is read-only and required
 // to render the settings page that hosts the enrollment UI.
-const MFA_ENROLLMENT_PATHS = new Set([
+// onboarding/complete is benign (just stamps onboardedAt) and gating it
+// makes the welcome dialog loop forever on dismiss.
+const MFA_GATE_EXEMPT_PATHS = new Set([
   "/api/auth/mfa/setup",
   "/api/auth/mfa/verify-setup",
   "/api/account/me",
+  "/api/account/onboarding/complete",
 ]);
 
 export const requireAuth = createMiddleware(async (c, next) => {
@@ -59,7 +62,7 @@ export const requireAuth = createMiddleware(async (c, next) => {
     if (
       (payload.role === "admin" || payload.role === "moderator") &&
       !payload.mfaEnabled &&
-      !MFA_ENROLLMENT_PATHS.has(c.req.path)
+      !MFA_GATE_EXEMPT_PATHS.has(c.req.path)
     ) {
       return c.json({ error: "mfa_required_for_role" }, 403);
     }

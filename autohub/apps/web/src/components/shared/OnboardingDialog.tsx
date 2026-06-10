@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import {
@@ -38,27 +38,33 @@ const STEPS = [
 export function OnboardingDialog() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const { profile, loading, markOnboarded, revertOnboarded } = useUserProfile();
+  const { profile, loading, markOnboarded } = useUserProfile();
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(0);
+  // Auto-open at most once per mount. Without this, a failed dismiss that
+  // reverts onboardedAt would instantly re-trigger this effect → infinite loop.
+  const hasAutoOpened = useRef(false);
 
   useEffect(() => {
     if (status !== "authenticated" || loading || !profile) return;
-    // Server is the sole gate — no localStorage
     if (profile.onboardedAt) return;
+    if (hasAutoOpened.current) return;
+    hasAutoOpened.current = true;
     setOpen(true);
   }, [status, loading, profile]);
 
   async function dismiss() {
-    if (!session?.apiToken || !profile) return;
+    // Close immediately and keep it closed for this session, regardless of
+    // whether the server write succeeds — the dialog must never reappear on
+    // its own after the user explicitly dismisses it.
     setOpen(false);
     markOnboarded();
-    try {
-      await apiClient.post("/api/account/onboarding/complete", {}, session.apiToken);
-    } catch {
-      // API failed — revert optimistic update so dialog reappears on next mount
-      revertOnboarded();
-    }
+    if (!session?.apiToken) return;
+    // Fire-and-forget; idempotent server-side. A failure just means the dialog
+    // may show again on a future fresh load, never in a loop within this session.
+    apiClient
+      .post("/api/account/onboarding/complete", {}, session.apiToken)
+      .catch(() => {});
   }
 
   function handleNext() {
