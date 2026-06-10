@@ -442,7 +442,31 @@ authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
   const requestId = (c.get as any)("requestId");
   await logAuditEvent({ userId: user.userId, action: "auth.mfa_enabled", ip, requestId });
 
-  return c.json({ data: { backupCodes: plainCodes } });
+  // Issue a fresh token reflecting mfaEnabled=true — the caller's current JWT
+  // still claims mfaEnabled=false, which would keep tripping the privileged-role
+  // MFA gate until the next login.
+  const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, user.userId)).limit(1);
+  const jti = randomUUID();
+  const token = jwt.sign(
+    {
+      userId: user.userId,
+      email: user.email,
+      role: roleRow?.role ?? "user",
+      jti,
+      emailVerified: user.emailVerified,
+      mfaEnabled: true,
+    },
+    env.NEXTAUTH_SECRET,
+    { expiresIn: "1d" }
+  );
+  await db.insert(sessions).values({
+    userId: user.userId,
+    tokenJti: jti,
+    userAgent: c.req.header("user-agent") ?? null,
+    ip,
+  }).catch(() => {}); // non-fatal
+
+  return c.json({ data: { backupCodes: plainCodes, token } });
 });
 
 // POST /auth/mfa/disable — disable MFA (requires current TOTP or backup code)

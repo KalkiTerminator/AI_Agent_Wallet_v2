@@ -18,7 +18,7 @@ const API_BASE = env.NEXT_PUBLIC_API_URL;
 type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, update: updateSession } = useSession();
   const { profile, refetch: refetchProfile } = useUserProfile();
 
   // Profile section
@@ -68,6 +68,13 @@ export default function SettingsPage() {
       setMfaEnabled(profile.mfaEnabled);
     }
   }, [profile]);
+
+  // Arrived via the mfa_required_for_role redirect — explain why
+  useEffect(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mfa") === "required") {
+      setMfaError("Your role requires two-factor authentication. Enable it below to unlock the rest of the app.");
+    }
+  }, []);
 
   const fetchSubscription = useCallback(async () => {
     if (!session?.apiToken) return;
@@ -182,11 +189,16 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.apiToken}` },
         body: JSON.stringify({ code: mfaCode }),
       });
-      const json = await res.json() as { data?: { backupCodes: string[] }; error?: string };
+      const json = await res.json() as { data?: { backupCodes: string[]; token?: string }; error?: string };
       if (!res.ok || !json.data) {
         setMfaError(json.error ?? "Invalid code — check your authenticator app and try again.");
         setMfaCode("");
         return;
+      }
+      // Swap in the fresh API token (mfaEnabled=true) — the old one would
+      // keep tripping the privileged-role MFA gate until next login
+      if (json.data.token) {
+        await updateSession({ apiToken: json.data.token, mfaPending: false, mfaToken: null });
       }
       setBackupCodes(json.data.backupCodes);
       setMfaCode("");
@@ -525,13 +537,13 @@ export default function SettingsPage() {
             <Input
               value={mfaCode}
               onChange={(e) => {
-                setMfaCode(e.target.value.replace(/\D/g, "").slice(0, 8));
+                // TOTP codes are digits; backup codes are hex (letters + digits)
+                setMfaCode(e.target.value.replace(/[^a-zA-Z0-9]/g, "").toUpperCase().slice(0, 8));
                 if (mfaError) setMfaError("");
               }}
               onKeyDown={(e) => { if (e.key === "Enter" && mfaCode.length >= 6) handleDisableMfa(); }}
               placeholder="000000"
               maxLength={8}
-              inputMode="numeric"
               autoComplete="one-time-code"
               className="h-9 text-sm font-mono tracking-widest w-36"
             />

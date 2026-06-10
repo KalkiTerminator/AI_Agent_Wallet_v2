@@ -16,6 +16,15 @@ async function apiRequest<T>(path: string, options: ApiOptions = {}): Promise<T>
   const res = await fetch(`${API_BASE_URL}${path}`, { ...fetchOptions, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ message: res.statusText }));
+    // Privileged roles must enroll in MFA — send the user to the enrollment
+    // card instead of surfacing opaque 403s on every page
+    if (
+      error.error === "mfa_required_for_role" &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/settings")
+    ) {
+      window.location.assign("/settings?mfa=required");
+    }
     throw new Error(error.error ?? error.message ?? "Request failed");
   }
   return res.json() as Promise<T>;

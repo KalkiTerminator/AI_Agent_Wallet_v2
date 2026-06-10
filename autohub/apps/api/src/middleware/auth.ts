@@ -20,6 +20,17 @@ declare module "hono" {
   }
 }
 
+// Paths a privileged user may reach BEFORE completing MFA enrollment.
+// Without these exemptions the MFA requirement deadlocks: the setup
+// endpoints themselves return 403 mfa_required_for_role, making it
+// impossible to ever enable MFA. /account/me is read-only and required
+// to render the settings page that hosts the enrollment UI.
+const MFA_ENROLLMENT_PATHS = new Set([
+  "/api/auth/mfa/setup",
+  "/api/auth/mfa/verify-setup",
+  "/api/account/me",
+]);
+
 export const requireAuth = createMiddleware(async (c, next) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
@@ -43,8 +54,13 @@ export const requireAuth = createMiddleware(async (c, next) => {
 
     c.set("user", payload);
 
-    // Force MFA enrollment for privileged roles
-    if ((payload.role === "admin" || payload.role === "moderator") && !payload.mfaEnabled) {
+    // Force MFA enrollment for privileged roles — but always allow the
+    // enrollment endpoints themselves, or enabling MFA is impossible
+    if (
+      (payload.role === "admin" || payload.role === "moderator") &&
+      !payload.mfaEnabled &&
+      !MFA_ENROLLMENT_PATHS.has(c.req.path)
+    ) {
       return c.json({ error: "mfa_required_for_role" }, 403);
     }
 
