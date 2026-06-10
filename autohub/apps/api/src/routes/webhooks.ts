@@ -6,10 +6,16 @@ import { payments, subscriptions, users, subscriptionInvoices } from "../db/sche
 import { logAuditEvent } from "../services/audit.js";
 import { SUBSCRIPTION_MONTHLY_CREDITS } from "@autohub/shared";
 import { env } from "../env.js";
-import { ingestStripeEvent } from "../services/stripe-webhook-dedup.js";
+import { ingestStripeEvent, releaseStripeEvent } from "../services/stripe-webhook-dedup.js";
+import { logger } from "../lib/logger.js";
 
 const webhooksRouter = new Hono();
 const stripe = new Stripe(env.STRIPE_SECRET_KEY);
+
+/** Thrown when an event arrives before its prerequisites (Stripe does not
+ *  guarantee ordering). The event is released and a 500 returned so Stripe
+ *  retries with backoff — by then the prerequisite event has usually landed. */
+class DeferEventError extends Error {}
 
 webhooksRouter.post("/stripe", async (c) => {
   const sig = c.req.header("stripe-signature");
@@ -26,6 +32,23 @@ webhooksRouter.post("/stripe", async (c) => {
     return c.json({ received: true });
   }
 
+  try {
+    await processStripeEvent(event);
+  } catch (err) {
+    // Give the event back so Stripe's retry isn't swallowed by dedup
+    await releaseStripeEvent(event.id).catch(() => {});
+    if (err instanceof DeferEventError) {
+      logger.warn({ eventId: event.id, eventType: event.type, reason: err.message }, "stripe-event-deferred");
+      return c.json({ error: "Event deferred — prerequisite not yet processed" }, 500);
+    }
+    logger.error({ err, eventId: event.id, eventType: event.type }, "stripe-event-failed");
+    return c.json({ error: "Event processing failed" }, 500);
+  }
+
+  return c.json({ received: true });
+});
+
+async function processStripeEvent(event: Stripe.Event): Promise<void> {
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -115,7 +138,14 @@ webhooksRouter.post("/stripe", async (c) => {
         .where(eq(subscriptions.stripeSubscriptionId, invoice.subscription as string))
         .limit(1);
 
-      if (!sub || sub.status !== "active") break;
+      // Stripe events are not ordered — invoice.paid can land before
+      // customer.subscription.created/updated. Defer instead of dropping,
+      // otherwise the monthly credits for this invoice are silently lost.
+      if (!sub || sub.status !== "active") {
+        throw new DeferEventError(
+          !sub ? "subscription row not yet created" : `subscription status is ${sub.status}, not active`
+        );
+      }
 
       // Idempotency check
       const [existing] = await db
@@ -196,8 +226,6 @@ webhooksRouter.post("/stripe", async (c) => {
       break;
     }
   }
-
-  return c.json({ received: true });
-});
+}
 
 export { webhooksRouter };

@@ -19,6 +19,7 @@ export default function ResetPasswordConfirmPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (password !== confirm) { setError("Passwords do not match"); return; }
+    if (password.length < 12) { setError("Password must be at least 12 characters"); return; }
     setLoading(true);
     setError(null);
     try {
@@ -47,7 +48,7 @@ export default function ResetPasswordConfirmPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            minLength={8}
+            minLength={12}
             className="h-11 rounded-sm"
           />
         </div>
@@ -59,7 +60,7 @@ export default function ResetPasswordConfirmPage() {
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required
-            minLength={8}
+            minLength={12}
             className="h-11 rounded-sm"
           />
         </div>

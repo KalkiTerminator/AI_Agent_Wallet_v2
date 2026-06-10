@@ -36,10 +36,12 @@ vi.mock("../env.js", () => ({
 
 vi.mock("../services/stripe-webhook-dedup.js", () => ({
   ingestStripeEvent: vi.fn().mockResolvedValue("first"),
+  releaseStripeEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { webhooksRouter } = await import("./webhooks.js");
 const { db } = await import("../db/index.js");
+const { releaseStripeEvent } = await import("../services/stripe-webhook-dedup.js");
 
 const app = new Hono();
 app.route("/api/webhooks", webhooksRouter);
@@ -102,6 +104,30 @@ describe("POST /api/webhooks/stripe — invoice.paid", () => {
     });
 
     expect(res.status).toBe(200);
+    expect(db.execute).not.toHaveBeenCalled();
+  });
+
+  it("defers invoice.paid (500 + release) when subscription row does not exist yet", async () => {
+    // Stripe events are unordered: invoice.paid can precede subscription.created.
+    // The handler must NOT consume the event — release it and 500 so Stripe retries.
+    (db.select as any).mockReturnValueOnce({
+      from: () => ({ where: () => ({ limit: () => Promise.resolve([]) }) }),
+    });
+
+    const body = makeEvent("invoice.paid", {
+      id: "in_003",
+      subscription: "sub_unknown",
+      amount_paid: 2000,
+    });
+
+    const res = await app.request("/api/webhooks/stripe", {
+      method: "POST",
+      headers: { "stripe-signature": "sig", "Content-Type": "application/json" },
+      body,
+    });
+
+    expect(res.status).toBe(500);
+    expect(releaseStripeEvent).toHaveBeenCalled();
     expect(db.execute).not.toHaveBeenCalled();
   });
 

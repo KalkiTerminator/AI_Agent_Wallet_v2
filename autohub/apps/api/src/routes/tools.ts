@@ -30,6 +30,26 @@ function validateToolNumerics(body: { creditCost?: number; webhookTimeout?: numb
   return null;
 }
 
+const STRING_LIMITS: Array<[field: string, max: number]> = [
+  ["name", 100],
+  ["description", 500],
+  ["category", 50],
+  ["iconUrl", 2048],
+  ["webhookUrl", 2048],
+  ["authHeader", 1024],
+  ["outputType", 50],
+];
+
+function validateToolStrings(body: Record<string, unknown>): string | null {
+  for (const [field, max] of STRING_LIMITS) {
+    const value = body[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== "string") return `${field} must be a string`;
+    if (value.length > max) return `${field} must be at most ${max} characters`;
+  }
+  return null;
+}
+
 function sanitizeToolForClient(tool: typeof aiTools.$inferSelect) {
   return {
     ...tool,
@@ -102,6 +122,8 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
   if (!body.category?.trim()) return c.json({ error: "category is required" }, 400);
   const numericError = validateToolNumerics(body);
   if (numericError) return c.json({ error: numericError }, 400);
+  const stringError = validateToolStrings(body as Record<string, unknown>);
+  if (stringError) return c.json({ error: stringError }, 400);
 
   // Validate webhook URL for SSRF before storing
   if (body.webhookUrl) {
@@ -480,6 +502,8 @@ toolsRouter.patch("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c)
 
   const numericError = validateToolNumerics(body);
   if (numericError) return c.json({ error: numericError }, 400);
+  const stringError = validateToolStrings(body as Record<string, unknown>);
+  if (stringError) return c.json({ error: stringError }, 400);
 
   const updates: Partial<typeof aiTools.$inferInsert> = { updatedAt: new Date() };
   if (body.name !== undefined) updates.name = body.name.trim();

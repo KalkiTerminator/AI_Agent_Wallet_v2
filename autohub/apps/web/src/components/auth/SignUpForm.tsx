@@ -13,10 +13,17 @@ import { env } from "@/lib/env";
 
 const API_BASE = env.NEXT_PUBLIC_API_URL;
 
+// Mirrors the API's RegisterSchema rules so users aren't surprised server-side
 const signUpSchema = z.object({
   fullName: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .refine((val) => {
+      const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^a-zA-Z0-9]/].filter((re) => re.test(val)).length;
+      return classes >= 3;
+    }, "Use at least 3 of: lowercase, uppercase, number, special character"),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",

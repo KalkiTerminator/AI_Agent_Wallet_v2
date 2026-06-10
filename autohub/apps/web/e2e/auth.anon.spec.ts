@@ -68,14 +68,26 @@ test.describe("Sign-up page", () => {
   });
 
   test("shows validation error when passwords do not match", async ({ page }) => {
-    // Zod refine runs client-side before any network call
+    // Zod refine runs client-side before any network call.
+    // Password must pass field-level rules (12+ chars, 3 char classes)
+    // or the object-level mismatch refine never executes.
     await page.getByLabel("Full name").fill("Jane Smith");
     await page.getByLabel("Email").fill("jane@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("password123");
-    await page.getByLabel("Confirm password").fill("different999");
+    await page.getByLabel("Password", { exact: true }).fill("Str0ng!Password");
+    await page.getByLabel("Confirm password").fill("Different!Pass99");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByTestId("confirm-password-error")).toBeVisible({ timeout: 5_000 });
     await expect(page.getByTestId("confirm-password-error")).toContainText(/passwords do not match/i);
+  });
+
+  test("shows validation error for weak password", async ({ page }) => {
+    await page.getByLabel("Full name").fill("Jane Smith");
+    await page.getByLabel("Email").fill("jane@example.com");
+    await page.getByLabel("Password", { exact: true }).fill("short");
+    await page.getByLabel("Confirm password").fill("short");
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByTestId("password-error")).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId("password-error")).toContainText(/at least 12 characters/i);
   });
 
   test("has link back to login page", async ({ page }) => {

@@ -103,6 +103,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
   session: { strategy: "jwt" },
   secret: process.env.NEXTAUTH_SECRET,
+  // Auth.js v5 rejects requests from unrecognized hosts with a 500 unless the
+  // host is trusted. Vercel sets this implicitly; self-hosted deploys (Railway,
+  // local `next start`) break without it. The app sits behind trusted infra.
+  trustHost: true,
 });
 
 // Extend NextAuth types

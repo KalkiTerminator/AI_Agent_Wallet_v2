@@ -125,9 +125,10 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
   const [roleRow] = await db.select().from(userRoles).where(eq(userRoles.userId, user.id)).limit(1);
   const role = roleRow?.role ?? "user";
 
-  await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
-
   if (user.mfaEnabled) {
+    // Password verified but session not yet granted — don't log "success"
+    // until the MFA challenge completes (challenge logs its own event)
+    await logAuditEvent({ userId: user.id, action: "auth.login.mfa_pending", ip, requestId });
     const mfaToken = jwt.sign(
       { userId: user.id, type: "mfa_pending" },
       env.NEXTAUTH_SECRET,
@@ -135,6 +136,8 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
     );
     return c.json({ mfaRequired: true, mfaToken, user: { id: user.id, email: user.email, role } });
   }
+
+  await logAuditEvent({ userId: user.id, action: "auth.login.success", ip, requestId });
 
   const jti = randomUUID();
   const token = jwt.sign(
