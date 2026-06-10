@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   LayoutDashboard, BarChart2, Settings, User, Wrench,
-  LogOut, Shield, CheckSquare, Users, Sun, Moon,
+  LogOut, Shield, CheckSquare, Users, Sun, Moon, Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,7 @@ const settingsLinks = [
 
 const adminLinks = [
   { href: "/admin?tab=users", label: "User Management", icon: Users },
+  { href: "/tools/mine", label: "My Tools", icon: Package },
   { href: "/tools/new", label: "Tool Dev", icon: Wrench },
   { href: "/admin?tab=tools", label: "Manage Tools", icon: Settings },
   { href: "/admin?tab=approvals", label: "Tool Approvals", icon: CheckSquare },

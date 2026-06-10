@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { apiClient } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ToggleLeft, ToggleRight, Archive } from "lucide-react";
+import { ToggleLeft, ToggleRight, Archive, Pencil } from "lucide-react";
 import type { AITool } from "@/types";
 
 interface Props {
@@ -51,6 +52,7 @@ export function ToolManagement({ tools, onToolsChange }: Props) {
             <TableHead className="text-xs">Category</TableHead>
             <TableHead className="text-xs">Status</TableHead>
             <TableHead className="text-xs text-right">Cost</TableHead>
+            <TableHead className="text-xs text-right">Edit</TableHead>
             <TableHead className="text-xs text-right">Enabled</TableHead>
             <TableHead className="text-xs text-right">Archive</TableHead>
           </TableRow>
@@ -70,6 +72,15 @@ export function ToolManagement({ tools, onToolsChange }: Props) {
                 </Badge>
               </TableCell>
               <TableCell className="text-xs text-right font-mono">{tool.creditCost}cr</TableCell>
+              <TableCell className="text-right">
+                <Link
+                  href={`/tools/${tool.id}/edit`}
+                  className="inline-flex opacity-60 hover:opacity-100 transition-opacity"
+                  title="Edit tool"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Link>
+              </TableCell>
               <TableCell className="text-right">
                 <button
                   onClick={() => toggleActive(tool)}
