@@ -17,6 +17,53 @@ interface FileViewerProps {
   outputType?: string;
 }
 
+// Bookkeeping keys the platform injects — never shown as result or extras.
+const BOOKKEEPING_KEYS = new Set(["usageid", "executionid", "usage_id", "execution_id"]);
+
+// Keys that, when present, hold the "real" output the user came to see.
+// Ordered by priority — the first match wins.
+const PRIMARY_KEYS = [
+  "result", "output", "text", "content", "markdown", "md", "html",
+  "url", "image", "imageurl", "image_url", "file", "fileurl", "file_url",
+  "csv", "data", "message", "value", "response", "answer",
+];
+
+/**
+ * Pulls the meaningful result out of a webhook response so the viewer can show
+ * THAT (rendered by its own type) instead of the raw JSON envelope.
+ * Returns the primary value plus any remaining author-added fields as "extras"
+ * (bookkeeping like usageId is dropped entirely).
+ */
+function extractPrimary(raw: any): { primary: any; extras: Record<string, any> } {
+  if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) {
+    return { primary: raw, extras: {} };
+  }
+
+  const meaningful = Object.entries(raw).filter(
+    ([k]) => !BOOKKEEPING_KEYS.has(k.toLowerCase())
+  );
+
+  if (meaningful.length === 0) return { primary: raw, extras: {} };
+
+  // Single meaningful field → that's the result, nothing to highlight.
+  if (meaningful.length === 1) {
+    return { primary: meaningful[0][1], extras: {} };
+  }
+
+  // Find the highest-priority known result key.
+  const lowerMap = new Map(meaningful.map(([k, v]) => [k.toLowerCase(), { k, v }]));
+  for (const key of PRIMARY_KEYS) {
+    const hit = lowerMap.get(key);
+    if (hit !== undefined) {
+      const extras = Object.fromEntries(meaningful.filter(([k]) => k !== hit.k));
+      return { primary: hit.v, extras };
+    }
+  }
+
+  // No obvious winner — show the whole object as JSON, nothing extracted.
+  return { primary: raw, extras: {} };
+}
+
 // File type categories
 const CODE_FORMATS = ['javascript', 'typescript', 'python', 'java', 'cpp', 'css', 'html'];
 const IMAGE_FORMATS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'tiff'];
@@ -210,9 +257,16 @@ const getFileExtension = (fileType: string): string => {
   return extensions[fileType] || fileType;
 };
 
-export const FileViewer = ({ data, outputType = "smart" }: FileViewerProps) => {
+export const FileViewer = ({ data: rawData, outputType = "smart" }: FileViewerProps) => {
   const [activeTab, setActiveTab] = useState<"preview" | "raw">("preview");
-  
+
+  // Show the meaningful result by default; keep the full envelope for the JSON tab.
+  const { primary, extras } = extractPrimary(rawData);
+  const data = primary; // preview, detection, and download all operate on the result
+  const extraEntries = Object.entries(extras);
+  // The raw/JSON tab is only interesting when the envelope differs from the result.
+  const rawIsObject = rawData !== null && typeof rawData === "object";
+
   // Determine actual file type
   const detectedType = detectFileType(data, outputType);
   
@@ -610,17 +664,39 @@ export const FileViewer = ({ data, outputType = "smart" }: FileViewerProps) => {
         
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "preview" | "raw")}>
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-            <TabsTrigger value="raw">Raw Data</TabsTrigger>
+            <TabsTrigger value="preview">Result</TabsTrigger>
+            <TabsTrigger value="raw">{rawIsObject ? "JSON" : "Raw"}</TabsTrigger>
           </TabsList>
-          
-          <TabsContent value="preview" className="mt-4">
+
+          <TabsContent value="preview" className="mt-4 space-y-3">
             {renderPreview()}
+
+            {/* Author-added fields beyond the primary result — highlighted, not buried */}
+            {extraEntries.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
+                  Additional fields
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {extraEntries.map(([k, v]) => (
+                    <div
+                      key={k}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-primary/30 bg-primary/5 px-2 py-1 text-xs"
+                    >
+                      <span className="font-mono text-primary">{k}</span>
+                      <span className="text-foreground break-all">
+                        {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </TabsContent>
-          
+
           <TabsContent value="raw" className="mt-4">
             <pre className="bg-muted/30 p-4 rounded-lg overflow-x-auto text-sm max-h-[500px] overflow-y-auto font-mono">
-              {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+              {typeof rawData === "string" ? rawData : JSON.stringify(rawData, null, 2)}
             </pre>
           </TabsContent>
         </Tabs>
