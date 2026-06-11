@@ -1,13 +1,44 @@
 import { Resend } from "resend";
 import { env } from "../env.js";
+import { logger } from "../lib/logger.js";
 
 const resend = new Resend(env.RESEND_API_KEY);
 const FROM = env.RESEND_FROM_EMAIL ?? "noreply@autohub.app";
 const WEB_URL = env.AUTOHUB_WEB_URL;
 
+const EMAIL_TIMEOUT_MS = 5_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error("email send timed out")), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+type EmailPayload = Parameters<typeof resend.emails.send>[0];
+
+// Bounded, retried send so a slow/failing Resend never hangs the request thread.
+// Resend returns { error } instead of throwing — surface it so the retry triggers.
+async function send(payload: EmailPayload): Promise<void> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { error } = await withTimeout(resend.emails.send(payload), EMAIL_TIMEOUT_MS);
+      if (error) throw new Error(typeof error === "string" ? error : JSON.stringify(error));
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 2) break;
+    }
+  }
+  logger.warn({ err: lastErr, to: (payload as { to?: unknown }).to }, "email-send-failed");
+  throw lastErr;
+}
+
 export async function sendVerificationEmail(to: string, token: string): Promise<void> {
   const url = `${WEB_URL}/auth/verify-email?token=${token}`;
-  await resend.emails.send({
+  await send({
     from: FROM,
     to,
     subject: "Verify your AutoHub email",
@@ -24,7 +55,7 @@ export async function sendVerificationEmail(to: string, token: string): Promise<
 }
 
 export async function sendSigningSecretRotationEmail(to: string, toolName: string, newSecret: string): Promise<void> {
-  await resend.emails.send({
+  await send({
     from: FROM,
     to,
     subject: "AutoHub: Your tool's signing secret has been rotated",
@@ -43,7 +74,7 @@ export async function sendSigningSecretRotationEmail(to: string, toolName: strin
 
 export async function sendPasswordResetEmail(to: string, token: string): Promise<void> {
   const url = `${WEB_URL}/auth/reset-password/${token}`;
-  await resend.emails.send({
+  await send({
     from: FROM,
     to,
     subject: "Reset your AutoHub password",

@@ -16,6 +16,7 @@ import { rateLimitIp, rateLimitIpStrict, checkLimit, getRedis } from "../middlew
 import { env } from "../env.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { logger } from "../lib/logger.js";
+import * as Sentry from "@sentry/node";
 
 function hashVerifyToken(raw: string): string {
   return createHmac("sha256", env.NEXTAUTH_SECRET).update(raw).digest("hex");
@@ -78,7 +79,7 @@ authRouter.post("/register", zValidator("json", RegisterSchema), async (c) => {
     tokenJti: jti,
     userAgent: c.req.header("user-agent") ?? null,
     ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
-  }).catch(() => {}); // non-fatal
+  }).catch((err) => Sentry.captureException(err)); // non-fatal, but track session-insert failures
 
   // Send email verification
   const rawVerifyToken = randomBytes(32).toString("hex");
@@ -158,7 +159,7 @@ authRouter.post("/login", zValidator("json", LoginSchema), async (c) => {
     tokenJti: jti,
     userAgent: c.req.header("user-agent") ?? null,
     ip: c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? null,
-  }).catch(() => {}); // non-fatal
+  }).catch((err) => Sentry.captureException(err)); // non-fatal, but track session-insert failures
 
   return c.json({
     token,
@@ -464,7 +465,7 @@ authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
     tokenJti: jti,
     userAgent: c.req.header("user-agent") ?? null,
     ip,
-  }).catch(() => {}); // non-fatal
+  }).catch((err) => Sentry.captureException(err)); // non-fatal, but track session-insert failures
 
   return c.json({ data: { backupCodes: plainCodes, token } });
 });

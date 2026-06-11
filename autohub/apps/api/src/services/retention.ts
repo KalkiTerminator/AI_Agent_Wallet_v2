@@ -8,12 +8,13 @@ export interface RetentionResult {
   webhookExecutionLog: number;
   passwordResetTokens: number;
   emailVerificationTokens: number;
+  webhookEvents: number;
 }
 
 export async function runRetentionPurge(): Promise<RetentionResult> {
   const now = new Date();
 
-  const [sessions, toolUsages, executions, webhookLog, resetTokens, verifyTokens] =
+  const [sessions, toolUsages, executions, webhookLog, resetTokens, verifyTokens, webhookEvents] =
     await Promise.all([
       // Revoked sessions older than 90 days
       db.execute(sql`
@@ -50,6 +51,11 @@ export async function runRetentionPurge(): Promise<RetentionResult> {
         WHERE (used_at IS NOT NULL OR expires_at < ${now})
           AND expires_at < ${new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)}
       `),
+      // Stripe dedup rows older than 30 days (retries are exhausted in ~3 days)
+      db.execute(sql`
+        DELETE FROM webhook_events
+        WHERE received_at < ${new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)}
+      `),
     ]);
 
   return {
@@ -59,5 +65,6 @@ export async function runRetentionPurge(): Promise<RetentionResult> {
     webhookExecutionLog: (webhookLog as any).rowCount ?? 0,
     passwordResetTokens: (resetTokens as any).rowCount ?? 0,
     emailVerificationTokens: (verifyTokens as any).rowCount ?? 0,
+    webhookEvents: (webhookEvents as any).rowCount ?? 0,
   };
 }

@@ -23,6 +23,7 @@ describe("runRetentionPurge", () => {
     expect(result).toHaveProperty("webhookExecutionLog");
     expect(result).toHaveProperty("passwordResetTokens");
     expect(result).toHaveProperty("emailVerificationTokens");
+    expect(result).toHaveProperty("webhookEvents");
   });
 
   it("returns numeric counts", async () => {

@@ -54,6 +54,17 @@ async function processStripeEvent(event: Stripe.Event): Promise<void> {
       const session = event.data.object as Stripe.Checkout.Session;
       const { userId, credits: creditAmount, type } = session.metadata ?? {};
 
+      // A checkout implies the user existed at purchase time; if they're now
+      // gone (deleted), skip gracefully rather than FK-crash on the payment
+      // insert and trigger an infinite Stripe retry loop.
+      if (userId) {
+        const [u] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+        if (!u) {
+          logger.warn({ eventId: event.id, userId }, "stripe-checkout-user-missing");
+          break;
+        }
+      }
+
       if (type === "credit_purchase" && userId && creditAmount) {
         const existing = await db.select().from(payments).where(eq(payments.stripeSessionId, session.id)).limit(1);
         if (existing.length === 0) {
@@ -103,7 +114,12 @@ async function processStripeEvent(event: Stripe.Event): Promise<void> {
         .from(users)
         .where(and(eq(users.stripeCustomerId, sub.customer as string), isNull(users.deletedAt)))
         .limit(1);
-      if (userRow) {
+      // subscription.created can arrive before checkout.session.completed has set
+      // the customer id — defer so Stripe retries instead of dropping the sub.
+      if (!userRow) {
+        throw new DeferEventError("user for stripeCustomerId not found yet");
+      }
+      {
         await db
           .insert(subscriptions)
           .values({
