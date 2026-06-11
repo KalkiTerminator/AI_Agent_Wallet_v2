@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Zap, CheckCircle, XCircle } from "lucide-react";
+import { Loader2, Play, Zap, CheckCircle, XCircle, MailCheck } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import type { AITool, ToolExecutionResult, InputField } from "@/types";
 
@@ -30,8 +30,22 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
   const [state, setState] = useState<ExecState>("idle");
   const [result, setResult] = useState<ToolExecutionResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
 
   if (!tool) return null;
+
+  const needsVerification = errorMsg === "email_not_verified";
+
+  const handleResendVerification = async () => {
+    if (!session?.apiToken) return;
+    setResendState("sending");
+    try {
+      await apiClient.post("/api/auth/resend-verification", {}, session.apiToken);
+      setResendState("sent");
+    } catch {
+      setResendState("failed");
+    }
+  };
 
   const fields: InputField[] = Array.isArray(tool.inputFields)
     ? tool.inputFields
@@ -156,6 +170,36 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
             </div>
             <Button variant="outline" className="w-full h-8 text-xs" onClick={() => setState("idle")}>
               Run Again
+            </Button>
+          </div>
+        ) : needsVerification ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-warning text-xs font-medium">
+              <MailCheck className="h-4 w-4" />
+              Verify your email to run tools
+            </div>
+            <p className="text-xs text-muted-foreground glass-subtle p-3 rounded-lg leading-relaxed">
+              For security, tool execution is locked until your email address is confirmed.
+              Click the link in your verification email — then come back and run this tool.
+              No re-login needed.
+            </p>
+            {resendState === "sent" ? (
+              <p className="text-xs text-success flex items-center gap-1.5">
+                <CheckCircle className="h-3.5 w-3.5" />
+                Verification email sent — check your inbox (and spam folder).
+              </p>
+            ) : (
+              <Button
+                className="w-full h-8 text-xs"
+                onClick={handleResendVerification}
+                disabled={resendState === "sending"}
+              >
+                {resendState === "sending" && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
+                {resendState === "failed" ? "Failed — try again" : "Resend verification email"}
+              </Button>
+            )}
+            <Button variant="outline" className="w-full h-8 text-xs" onClick={() => { setState("idle"); setResendState("idle"); }}>
+              I&apos;ve verified — run it
             </Button>
           </div>
         ) : (
