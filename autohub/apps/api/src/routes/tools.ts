@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { eq, and, desc, count, isNull } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { resolveTxt } from "dns/promises";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/index.js";
 import { aiTools, toolUsages, toolAccess, webhookDomains } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -15,6 +17,11 @@ import { encrypt, decrypt, maskUrl } from "../services/crypto.js";
 import { logAuditEvent } from "../services/audit.js";
 
 const toolsRouter = new Hono();
+
+// Execute/sandbox body — toolId comes from the URL, only inputs is in the body.
+const ExecuteBodySchema = z.object({
+  inputs: z.record(z.unknown()).default({}),
+}).strict();
 
 // Bounds match CreateToolSchema — returns an error string or null
 function validateToolNumerics(body: { creditCost?: number; webhookTimeout?: number; webhookRetries?: number }): string | null {
@@ -344,8 +351,8 @@ toolsRouter.delete("/:id/access/:userId", requireAuth, requireRole("moderator"),
   return c.json({ data: { success: true } });
 });
 
-// POST /api/tools/domains — register a webhook domain
-toolsRouter.post("/domains", requireAuth, rateLimitIp(5, 60_000), async (c) => {
+// POST /api/tools/domains — register a webhook domain (per-user limit: IP rotation can't enumerate)
+toolsRouter.post("/domains", requireAuth, rateLimitUser(5, 60_000), async (c) => {
   const user = c.get("user");
   const { webhookUrl } = await c.req.json<{ webhookUrl: string }>();
 
@@ -458,10 +465,10 @@ toolsRouter.get("/domains", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (
 });
 
 // POST /api/tools/:id/sandbox — sandbox execution (no credits, creator/admin only)
-toolsRouter.post("/:id/sandbox", requireAuth, requireVerified, rateLimitUser(RATE_LIMITS.SANDBOX, 60_000), async (c) => {
+toolsRouter.post("/:id/sandbox", requireAuth, requireVerified, rateLimitUser(RATE_LIMITS.SANDBOX, 60_000), zValidator("json", ExecuteBodySchema), async (c) => {
   const toolId = c.req.param("id");
   const user = c.get("user");
-  const body = await c.req.json();
+  const { inputs } = c.req.valid("json");
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? undefined;
 
   try {
@@ -469,7 +476,7 @@ toolsRouter.post("/:id/sandbox", requireAuth, requireVerified, rateLimitUser(RAT
       toolId,
       userId: user.userId,
       userRole: user.role,
-      inputs: body.inputs ?? {},
+      inputs,
       ip,
     });
     return c.json({ data: result });
@@ -597,13 +604,13 @@ toolsRouter.get("/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 });
 
 // POST /api/tools/:id/execute — two-phase commit execution
-toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimitIp(RATE_LIMITS.TOOL_EXECUTE), rateLimitUser(30, 60_000), async (c) => {
+toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimitIp(RATE_LIMITS.TOOL_EXECUTE), rateLimitUser(30, 60_000), zValidator("json", ExecuteBodySchema), async (c) => {
   const toolId = c.req.param("id");
   const user = c.get("user");
-  const body = await c.req.json();
+  const { inputs } = c.req.valid("json");
   const ip = c.req.header("x-forwarded-for") ?? c.req.header("x-real-ip") ?? undefined;
 
-  const result = await ToolExecutionService.execute({ toolId, userId: user.userId, userRole: user.role, inputs: body.inputs ?? {}, ip });
+  const result = await ToolExecutionService.execute({ toolId, userId: user.userId, userRole: user.role, inputs, ip });
   return c.json({ data: result });
 });
 

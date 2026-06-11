@@ -1,5 +1,8 @@
 import { Hono } from "hono";
 import { eq, and, gte, lte, desc, isNull, sql } from "drizzle-orm";
+import { timingSafeEqual } from "crypto";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/index.js";
 import {
   auditLogs, users, userRoles, sessions, dataSubjectRequests,
@@ -11,17 +14,48 @@ import { RATE_LIMITS } from "@autohub/shared";
 
 const complianceRouter = new Hono();
 
-// Vanta alternative auth OR admin JWT
+function clientIp(c: { req: { header: (n: string) => string | undefined } }): string | null {
+  return c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? c.req.header("x-real-ip") ?? null;
+}
+
+// Constant-time comparison that tolerates length mismatch without leaking it.
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+// Vanta read-only scanner key OR admin JWT.
+// The static-token path is hardened: the key must be long/random, compared in
+// constant time, optionally IP-allowlisted, restricted to GET (no mutations via
+// a shared secret), and every access is audit-logged.
 complianceRouter.use("*", async (c, next) => {
   const vantaKey = process.env.VANTA_API_KEY;
-  if (vantaKey) {
-    const auth = c.req.header("Authorization");
-    if (auth === `Bearer ${vantaKey}`) {
+  const presented = c.req.header("Authorization");
+
+  // Only treat the request as a Vanta attempt if a key is configured AND a
+  // bearer token was presented — otherwise fall through to real admin auth.
+  if (vantaKey && vantaKey.length >= 32 && presented?.startsWith("Bearer ")) {
+    const token = presented.slice(7);
+    if (safeEqual(token, vantaKey)) {
+      const ip = clientIp(c);
+      const allow = (process.env.VANTA_ALLOWED_IPS ?? "")
+        .split(",").map((s) => s.trim()).filter(Boolean);
+      if (allow.length > 0 && (!ip || !allow.includes(ip))) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      // Shared secret is read-only; mutations require an authenticated admin.
+      if (c.req.method !== "GET") {
+        return c.json({ error: "Vanta token is read-only" }, 403);
+      }
+      await logAuditEvent({ action: "compliance.vanta_access", metadata: { path: c.req.path }, ip });
       await next();
       return;
     }
   }
-  // Fall through to standard admin auth
+
+  // Standard admin auth (MFA-gated via requireAuth).
   await requireAuth(c, async () => {
     await requireAdmin(c, next);
   });
@@ -143,20 +177,20 @@ complianceRouter.get("/dsar", rateLimitIp(RATE_LIMITS.COMPLIANCE), async (c) => 
 });
 
 // PATCH /api/admin/compliance/dsar/:id — resolve a DSAR
-complianceRouter.patch("/dsar/:id", rateLimitIp(RATE_LIMITS.COMPLIANCE), async (c) => {
+const DsarResolveSchema = z.object({
+  status: z.enum(["in_progress", "completed", "rejected"]),
+  resolutionNotes: z.string().max(2000).optional(),
+}).strict();
+
+complianceRouter.patch("/dsar/:id", rateLimitIp(RATE_LIMITS.COMPLIANCE), zValidator("json", DsarResolveSchema), async (c) => {
   const actor = c.get("user");
   const { id } = c.req.param();
-  const body = await c.req.json<{ status: string; resolutionNotes?: string }>();
-
-  const validStatuses = ["in_progress", "completed", "rejected"];
-  if (!validStatuses.includes(body.status)) {
-    return c.json({ error: "Invalid status" }, 400);
-  }
+  const body = c.req.valid("json");
 
   const [updated] = await db
     .update(dataSubjectRequests)
     .set({
-      status: body.status as any,
+      status: body.status,
       resolutionNotes: body.resolutionNotes ?? null,
       resolvedBy: actor.userId,
       resolvedAt: body.status === "completed" || body.status === "rejected" ? new Date() : null,

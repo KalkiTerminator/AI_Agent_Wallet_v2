@@ -114,3 +114,27 @@ export async function validateOutboundUrl(rawUrl: string): Promise<{ safeUrl: st
   // Pin first resolved IP — caller uses this to prevent DNS rebinding
   return { safeUrl: rawUrl, resolvedIp: addresses[0] };
 }
+
+/**
+ * SSRF-safe outbound fetch. Validates the target, then disables automatic
+ * redirect following (`redirect: "manual"`) and re-validates every hop's
+ * Location against the same guard — so an allowed host cannot 302 to an
+ * internal/metadata address. Relative redirects resolve against the current URL.
+ *
+ * Throws SSRFError if any hop is unsafe or the redirect chain is too long.
+ */
+export async function safeFetch(url: string, init: RequestInit, maxRedirects = 3): Promise<Response> {
+  let current = url;
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    await validateOutboundUrl(current);
+    const res = await fetch(current, { ...init, redirect: "manual" });
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get("location");
+      if (!location) return res; // 3xx without Location — let the caller treat as non-ok
+      current = new URL(location, current).toString();
+      continue;
+    }
+    return res;
+  }
+  throw new SSRFError("Too many redirects");
+}

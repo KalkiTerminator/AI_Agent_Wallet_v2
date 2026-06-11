@@ -6,7 +6,11 @@ import { requireAdmin } from "../middleware/auth.js";
 import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
 import { eq, and, sql, desc, isNull, inArray } from "drizzle-orm";
+import { z } from "zod";
+import { zValidator } from "@hono/zod-validator";
 import { logAuditEvent } from "../services/audit.js";
+
+const RoleNameSchema = z.object({ role: z.string().min(1).max(50) }).strict();
 
 const DEFAULT_ROLES = ["admin", "moderator", "user"];
 const ROLES_CONFIG_KEY = "custom_roles";
@@ -257,9 +261,9 @@ adminRouter.get("/roles", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 });
 
 // POST /api/admin/roles — add a new role
-adminRouter.post("/roles", rateLimitIp(RATE_LIMITS.READS), async (c) => {
-  const body = await c.req.json<{ role: string }>();
-  const name = body.role?.trim().toLowerCase();
+adminRouter.post("/roles", rateLimitIp(RATE_LIMITS.READS), zValidator("json", RoleNameSchema), async (c) => {
+  const body = c.req.valid("json");
+  const name = body.role.trim().toLowerCase();
   if (!name || !/^[a-z0-9_-]+$/.test(name)) {
     return c.json({ error: "Role must be lowercase alphanumeric (underscores/hyphens allowed)" }, 400);
   }
@@ -286,10 +290,10 @@ adminRouter.delete("/roles/:role", rateLimitIp(RATE_LIMITS.READS), async (c) => 
 });
 
 // PATCH /api/admin/users/:id/role — change user role
-adminRouter.patch("/users/:id/role", rateLimitIp(RATE_LIMITS.READS), async (c) => {
+adminRouter.patch("/users/:id/role", rateLimitIp(RATE_LIMITS.READS), zValidator("json", RoleNameSchema), async (c) => {
   const { id } = c.req.param();
   const actor = c.get("user");
-  const body = await c.req.json<{ role: string }>();
+  const body = c.req.valid("json");
   const roles = await getRoles();
   if (!roles.includes(body.role)) {
     return c.json({ error: "Invalid role" }, 400);

@@ -4,7 +4,7 @@ import { aiTools, toolUsages, credits, webhookExecutionLog } from "../db/schema.
 import type { ToolUsageStatus } from "@autohub/shared";
 import { decrypt } from "./crypto.js";
 import { signPayload } from "./hmac.js";
-import { validateOutboundUrl, SSRFError } from "./url-guard.js";
+import { safeFetch, SSRFError } from "./url-guard.js";
 
 // Read a webhook response body without silently discarding non-JSON output.
 // Prefers parsed JSON, falls back to the raw string, null only when empty.
@@ -192,12 +192,11 @@ export class ToolExecutionService {
       : tool.webhookUrl!;
 
     try {
-      // SSRF guard on every call — creation-time validation alone doesn't stop DNS rebinding
-      await validateOutboundUrl(webhookUrl);
-
+      // safeFetch validates + re-validates every redirect hop (DNS-rebinding +
+      // redirect-to-metadata SSRF defense)
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), Math.min(tool.webhookTimeout ?? 30, 300) * 1000);
-      const res = await fetch(webhookUrl, {
+      const res = await safeFetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Autohub-Sandbox": "true" },
         body: JSON.stringify({ usageId: usage.id, inputs }),
@@ -242,13 +241,11 @@ export class ToolExecutionService {
 
       const start = Date.now();
       try {
-        // SSRF guard on every attempt — also defeats DNS rebinding after creation-time validation
-        await validateOutboundUrl(webhookUrl);
-
+        // safeFetch validates + re-validates every redirect hop on each attempt
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), Math.min(tool.webhookTimeout ?? 30, 300) * 1000);
 
-        const res = await fetch(webhookUrl, {
+        const res = await safeFetch(webhookUrl, {
           method: "POST",
           headers,
           body,
