@@ -30,6 +30,16 @@ function validateToolNumerics(body: { creditCost?: number; webhookTimeout?: numb
   return null;
 }
 
+// n8n (and similar) test webhook URLs only fire while the editor is open in
+// "listen" mode — they never work for a registered tool and silently return
+// empty/404 bodies, producing a misleading "success". Reject them up front.
+function checkNotTestWebhook(url: string): string | null {
+  if (/\/webhook-test\//i.test(url)) {
+    return "This is an n8n test URL (/webhook-test/). Activate your workflow and use the production URL (/webhook/) instead.";
+  }
+  return null;
+}
+
 const STRING_LIMITS: Array<[field: string, max: number]> = [
   ["name", 100],
   ["description", 500],
@@ -127,6 +137,8 @@ toolsRouter.post("/", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => 
 
   // Validate webhook URL for SSRF before storing
   if (body.webhookUrl) {
+    const testErr = checkNotTestWebhook(body.webhookUrl);
+    if (testErr) return c.json({ error: testErr }, 400);
     try {
       await validateOutboundUrl(body.webhookUrl);
     } catch (err) {
@@ -492,6 +504,8 @@ toolsRouter.patch("/:id", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c)
   }>();
 
   if (body.webhookUrl) {
+    const testErr = checkNotTestWebhook(body.webhookUrl);
+    if (testErr) return c.json({ error: testErr }, 400);
     try {
       await validateOutboundUrl(body.webhookUrl);
     } catch (err) {

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Play, Zap, CheckCircle, XCircle, MailCheck } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
+import { FileViewer } from "@/components/shared/FileViewer";
 import type { AITool, ToolExecutionResult, InputField } from "@/types";
 
 interface ToolExecuteDialogProps {
@@ -163,11 +164,18 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
               <CheckCircle className="h-4 w-4" />
               Success — {result.creditsDeducted} credit{result.creditsDeducted !== 1 ? "s" : ""} used
             </div>
-            <div className="rounded-lg glass-subtle p-3 text-xs font-mono whitespace-pre-wrap max-h-64 overflow-auto">
-              {typeof result.output === "string"
-                ? result.output
-                : JSON.stringify(result.output, null, 2)}
-            </div>
+            {result.output === null || result.output === undefined || result.output === "" ? (
+              <div className="rounded-lg glass-subtle p-4 text-xs text-muted-foreground text-center leading-relaxed">
+                The webhook responded but returned no content.{" "}
+                {tool.executionMode === "async"
+                  ? "This is an async tool — results arrive via callback."
+                  : "Make sure your workflow ends with a “Respond to Webhook” node that returns data."}
+              </div>
+            ) : (
+              <div className="max-h-[60vh] overflow-y-auto">
+                <FileViewer data={result.output} outputType={tool.outputType ?? "smart"} />
+              </div>
+            )}
             <Button variant="outline" className="w-full h-8 text-xs" onClick={() => setState("idle")}>
               Run Again
             </Button>

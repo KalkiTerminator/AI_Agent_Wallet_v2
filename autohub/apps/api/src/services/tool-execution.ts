@@ -6,6 +6,18 @@ import { decrypt } from "./crypto.js";
 import { signPayload } from "./hmac.js";
 import { validateOutboundUrl, SSRFError } from "./url-guard.js";
 
+// Read a webhook response body without silently discarding non-JSON output.
+// Prefers parsed JSON, falls back to the raw string, null only when empty.
+async function readResponseBody(res: Response): Promise<unknown> {
+  const raw = await res.text().catch(() => "");
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
 // Builds outbound webhook headers: creator-supplied auth header + HMAC signature
 async function buildWebhookHeaders(
   tool: { signingSecretEncrypted: string | null; authHeaderEncrypted: string | null },
@@ -192,7 +204,7 @@ export class ToolExecutionService {
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));
 
-      const outputData = res.ok ? await res.json().catch(() => null) : null;
+      const outputData = res.ok ? await readResponseBody(res) : null;
       await db.update(toolUsages).set({ outputData, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
       return { usageId: usage.id, status: "sandbox", output: outputData, creditsDeducted: 0 };
     } catch (err) {
@@ -246,7 +258,7 @@ export class ToolExecutionService {
         const durationMs = Date.now() - start;
 
         if (res.ok) {
-          outputData = await res.json().catch(() => null);
+          outputData = await readResponseBody(res);
           await db.insert(webhookExecutionLog).values({
             usageId: usage.id,
             toolId: tool.id,
