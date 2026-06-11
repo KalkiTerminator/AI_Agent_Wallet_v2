@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { apiClient } from "@/lib/api-client";
 import { useUserProfile } from "@/context/UserProfileContext";
@@ -49,6 +49,21 @@ export default function SettingsPage() {
   const [mfaLoading, setMfaLoading] = useState(false);
   const [mfaError, setMfaError] = useState("");
   const [mfaCopied, setMfaCopied] = useState(false);
+  const [qrFailed, setQrFailed] = useState(false);
+  const mfaQrRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Draw the QR once the canvas is actually mounted (keyed on setup data so it
+  // never races the render — the old setTimeout could fire before the canvas
+  // existed, leaving a blank box with no QR and no error).
+  useEffect(() => {
+    if (mfaState !== "enrolling" || !mfaSetupData) return;
+    const canvas = mfaQrRef.current;
+    if (!canvas) return;
+    setQrFailed(false);
+    QRCode.toCanvas(canvas, mfaSetupData.otpauthUrl, { width: 200, margin: 1 }).catch(() => {
+      setQrFailed(true); // fall back to the manual key, which is always shown
+    });
+  }, [mfaState, mfaSetupData]);
 
   function copyToClipboard(text: string) {
     navigator.clipboard.writeText(text).then(() => {
@@ -166,11 +181,8 @@ export default function SettingsPage() {
         setMfaError(json.error ?? "Failed to start MFA setup. Please try again.");
         return;
       }
+      // The useEffect keyed on mfaSetupData draws the QR once the canvas mounts
       setMfaSetupData(json.data);
-      setTimeout(async () => {
-        const canvas = document.getElementById("mfa-qr") as HTMLCanvasElement | null;
-        if (canvas) await QRCode.toCanvas(canvas, json.data!.otpauthUrl, { width: 180 });
-      }, 50);
     } catch {
       setMfaState("idle");
       setMfaError("Network error. Please check your connection and try again.");
@@ -441,21 +453,35 @@ export default function SettingsPage() {
         {mfaState === "enrolling" && (
           <div className="space-y-4">
             {!mfaSetupData ? (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
-                <Loader2 className="h-3 w-3 animate-spin" />
+              <div className="flex items-center gap-2 text-xs text-muted-foreground py-6 justify-center">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 Generating your secret key…
               </div>
             ) : (
               <>
                 <div className="space-y-1">
                   <p className="text-xs font-medium">Step 1 — Scan with your authenticator app</p>
-                  <p className="text-xs text-muted-foreground">Use Google Authenticator, Authy, 1Password, or any TOTP app.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Open Google Authenticator, Authy, or 1Password → tap <span className="font-medium text-foreground">+ / Add</span> → <span className="font-medium text-foreground">Scan a QR code</span>, then point your camera here.
+                  </p>
                 </div>
-                <canvas id="mfa-qr" className="rounded-lg border border-border/40" />
+
+                {/* QR — always rendered so the ref/effect can draw into it */}
+                <div className="flex justify-center">
+                  <div className="bg-white p-3 rounded-lg border border-border/40 inline-flex">
+                    <canvas ref={mfaQrRef} className="block" width={200} height={200} />
+                  </div>
+                </div>
+                {qrFailed && (
+                  <p className="text-[11px] text-warning text-center">
+                    Couldn&apos;t render the QR — use the manual key below instead.
+                  </p>
+                )}
+
                 <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Can&apos;t scan? Enter this key manually:</p>
+                  <p className="text-xs text-muted-foreground">Can&apos;t scan? Add a <span className="font-medium text-foreground">manual / setup key</span> in your app and paste this:</p>
                   <div className="flex items-center gap-2 bg-muted/40 rounded px-3 py-2">
-                    <code className="text-xs flex-1 break-all select-all">{mfaSetupData.secret}</code>
+                    <code className="text-xs flex-1 break-all select-all tracking-wide">{mfaSetupData.secret}</code>
                     <button
                       onClick={() => copyToClipboard(mfaSetupData.secret)}
                       className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
@@ -466,9 +492,13 @@ export default function SettingsPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-xs font-medium">Step 2 — Enter the 6-digit code from your app</p>
+                  <p className="text-xs font-medium">Step 2 — Enter the 6-digit code your app shows</p>
+                  <p className="text-[11px] text-muted-foreground">
+                    The code refreshes every 30 seconds — type the current one and verify before it rolls over.
+                  </p>
                   <Input
                     value={mfaCode}
+                    autoFocus
                     onChange={(e) => {
                       const v = e.target.value.replace(/\D/g, "").slice(0, 6);
                       setMfaCode(v);
@@ -479,7 +509,7 @@ export default function SettingsPage() {
                     maxLength={6}
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    className="h-9 text-sm font-mono tracking-widest w-36"
+                    className="h-10 text-base font-mono tracking-[0.4em] text-center w-44"
                   />
                   {mfaError && (
                     <div className="flex items-center gap-1.5 text-xs text-destructive">
@@ -493,7 +523,7 @@ export default function SettingsPage() {
                     {mfaLoading ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : null}
                     Verify &amp; Enable
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setMfaState("idle"); setMfaError(""); setMfaCode(""); setMfaSetupData(null); }}>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setMfaState("idle"); setMfaError(""); setMfaCode(""); setMfaSetupData(null); setQrFailed(false); }}>
                     Cancel
                   </Button>
                 </div>
