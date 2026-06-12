@@ -6,6 +6,7 @@ import { decrypt } from "./crypto.js";
 import { signPayload } from "./hmac.js";
 import { safeFetch, SSRFError } from "./url-guard.js";
 import { canAttempt, recordSuccess, recordFailure } from "./circuit-breaker.js";
+import { logAuditEvent } from "./audit.js";
 
 // Read a webhook response body without silently discarding non-JSON output.
 // Prefers parsed JSON, falls back to the raw string, null only when empty.
@@ -319,7 +320,16 @@ export class ToolExecutionService {
     // All attempts failed — refund credits (admins were never charged) and
     // record one breaker failure for the tool (not one per retry attempt).
     await refund();
-    await recordFailure(tool.id);
+    const tripped = await recordFailure(tool.id);
+    if (tripped) {
+      await logAuditEvent({
+        userId: usage.userId,
+        action: "tool.circuit_breaker.opened",
+        resourceType: "tool",
+        resourceId: tool.id,
+        metadata: { reason: lastError?.message },
+      });
+    }
     await db.update(toolUsages).set({ status: "refunded", errorMessage: lastError?.message, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
 
     return { usageId: usage.id, status: "refunded" as ToolUsageStatus, creditsDeducted: 0 };

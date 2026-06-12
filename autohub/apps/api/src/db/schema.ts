@@ -70,7 +70,10 @@ export const aiTools = pgTable("ai_tools", {
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("ai_tools_approval_status_idx").on(t.approvalStatus),
+  index("ai_tools_created_by_user_id_idx").on(t.createdByUserId),
+]);
 
 // ─── tool_usages ────────────────────────────────────────
 export const toolUsages = pgTable("tool_usages", {
@@ -89,6 +92,8 @@ export const toolUsages = pgTable("tool_usages", {
 }, (t) => [
   index("tool_usages_user_id_idx").on(t.userId),
   index("tool_usages_tool_id_idx").on(t.toolId),
+  // Hot path: GET /api/tools/usage orders by created_at desc per user
+  index("tool_usages_user_created_idx").on(t.userId, t.createdAt),
 ]);
 
 // ─── audit_logs ─────────────────────────────────────────
@@ -103,6 +108,7 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("audit_logs_created_at_idx").on(t.createdAt),
+  index("audit_logs_user_id_idx").on(t.userId),
 ]);
 
 // ─── user_favorites ─────────────────────────────────────

@@ -1,11 +1,11 @@
 import { Hono } from "hono";
 import { db } from "../db/index.js";
-import { users, userRoles, toolUsages, aiTools, payments, appConfig } from "../db/schema.js";
+import { users, userRoles, toolUsages, aiTools, payments, appConfig, auditLogs } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireAdmin } from "../middleware/auth.js";
 import { rateLimitIp } from "../middleware/rate-limit.js";
 import { RATE_LIMITS } from "@autohub/shared";
-import { eq, and, sql, desc, isNull, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { logAuditEvent } from "../services/audit.js";
@@ -26,21 +26,31 @@ const adminRouter = new Hono();
 adminRouter.use("*", requireAuth, requireAdmin);
 
 adminRouter.get("/users", rateLimitIp(RATE_LIMITS.READS), async (c) => {
-  const result = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      fullName: users.fullName,
-      createdAt: users.createdAt,
-      isActive: users.isActive,
-      role: userRoles.role,
-      isOwner: userRoles.isOwner,
-    })
-    .from(users)
-    .leftJoin(userRoles, eq(userRoles.userId, users.id))
-    .where(isNull(users.deletedAt));
+  const page = Math.max(1, Number(c.req.query("page") ?? 1));
+  const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") ?? 50)));
+  const offset = (page - 1) * limit;
 
-  return c.json({ data: result });
+  const [result, [{ total }]] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        email: users.email,
+        fullName: users.fullName,
+        createdAt: users.createdAt,
+        isActive: users.isActive,
+        role: userRoles.role,
+        isOwner: userRoles.isOwner,
+      })
+      .from(users)
+      .leftJoin(userRoles, eq(userRoles.userId, users.id))
+      .where(isNull(users.deletedAt))
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ total: sql<number>`count(*)::int` }).from(users).where(isNull(users.deletedAt)),
+  ]);
+
+  return c.json({ data: result, meta: { page, limit, total } });
 });
 
 adminRouter.get("/analytics", rateLimitIp(RATE_LIMITS.READS), async (c) => {
@@ -156,7 +166,37 @@ adminRouter.get("/tools", rateLimitIp(RATE_LIMITS.READS), async (c) => {
     .where(isNull(aiTools.deletedAt))
     .orderBy(desc(aiTools.createdAt));
 
-  const creatorIds = [...new Set(toolList.map((t) => t.createdByUserId).filter(Boolean))] as string[];
+  // Creator reputation via 3 grouped aggregations (was N+1: 3 queries per creator)
+  const [toolCounts, execStats, tripStats] = await Promise.all([
+    db
+      .select({
+        creatorId: aiTools.createdByUserId,
+        status: aiTools.approvalStatus,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(aiTools)
+      .where(isNull(aiTools.deletedAt))
+      .groupBy(aiTools.createdByUserId, aiTools.approvalStatus),
+    db
+      .select({
+        creatorId: aiTools.createdByUserId,
+        total: sql<number>`count(*)::int`,
+        success: sql<number>`count(*) FILTER (WHERE ${toolUsages.status} = 'success')::int`,
+      })
+      .from(toolUsages)
+      .innerJoin(aiTools, eq(aiTools.id, toolUsages.toolId))
+      .where(isNull(toolUsages.deletedAt))
+      .groupBy(aiTools.createdByUserId),
+    db
+      .select({
+        creatorId: aiTools.createdByUserId,
+        trips: sql<number>`count(*)::int`,
+      })
+      .from(auditLogs)
+      .innerJoin(aiTools, sql`${auditLogs.resourceId} = ${aiTools.id}::text`)
+      .where(eq(auditLogs.action, "tool.circuit_breaker.opened"))
+      .groupBy(aiTools.createdByUserId),
+  ]);
 
   const reputationMap: Record<string, {
     toolsApproved: number;
@@ -166,36 +206,25 @@ adminRouter.get("/tools", rateLimitIp(RATE_LIMITS.READS), async (c) => {
     circuitBreakerTrips: number;
   }> = {};
 
-  await Promise.all(creatorIds.map(async (creatorId) => {
-    const creatorTools = toolList
-      .filter((t) => t.createdByUserId === creatorId)
-      .map((t) => t.id);
+  const ensure = (id: string) =>
+    (reputationMap[id] ??= { toolsApproved: 0, toolsRejected: 0, totalExecutions: 0, webhookSuccessRate: 1, circuitBreakerTrips: 0 });
 
-    const [[approved], [rejected], [execCount]] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(aiTools)
-        .where(and(eq(aiTools.createdByUserId, creatorId), eq(aiTools.approvalStatus, "approved"), isNull(aiTools.deletedAt))),
-      db
-        .select({ count: sql<number>`count(*)` })
-        .from(aiTools)
-        .where(and(eq(aiTools.createdByUserId, creatorId), eq(aiTools.approvalStatus, "rejected"), isNull(aiTools.deletedAt))),
-      creatorTools.length > 0
-        ? db
-            .select({ count: sql<number>`count(*)` })
-            .from(toolUsages)
-            .where(and(inArray(toolUsages.toolId, creatorTools), isNull(toolUsages.deletedAt)))
-        : Promise.resolve([{ count: 0 }]),
-    ]);
-
-    reputationMap[creatorId] = {
-      toolsApproved: Number(approved.count),
-      toolsRejected: Number(rejected.count),
-      totalExecutions: Number(execCount?.count ?? 0),
-      webhookSuccessRate: 1.0,
-      circuitBreakerTrips: 0,
-    };
-  }));
+  for (const r of toolCounts) {
+    if (!r.creatorId) continue;
+    const rep = ensure(r.creatorId);
+    if (r.status === "approved") rep.toolsApproved = r.count;
+    else if (r.status === "rejected") rep.toolsRejected = r.count;
+  }
+  for (const r of execStats) {
+    if (!r.creatorId) continue;
+    const rep = ensure(r.creatorId);
+    rep.totalExecutions = r.total;
+    rep.webhookSuccessRate = r.total > 0 ? r.success / r.total : 1;
+  }
+  for (const r of tripStats) {
+    if (!r.creatorId) continue;
+    ensure(r.creatorId).circuitBreakerTrips = r.trips;
+  }
 
   const result = toolList.map((tool) => ({
     ...tool,
