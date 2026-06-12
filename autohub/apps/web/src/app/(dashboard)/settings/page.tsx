@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CheckCircle, AlertCircle, Loader2, Copy, Check, ShieldCheck, ShieldOff } from "lucide-react";
 import type { SubscriptionStatus } from "@/types";
 import { env } from "@/lib/env";
+import { toast } from "@/lib/toast";
 
 const API_BASE = env.NEXT_PUBLIC_API_URL;
 
@@ -137,10 +138,13 @@ export default function SettingsPage() {
     try {
       await apiClient.patch("/api/auth/profile", { fullName }, session.apiToken);
       setProfileState("saved");
+      toast.success("Profile saved");
       setTimeout(() => setProfileState("idle"), 2500);
     } catch (err) {
-      setProfileError(err instanceof Error ? err.message : "Failed to save profile");
+      const msg = err instanceof Error ? err.message : "Failed to save profile";
+      setProfileError(msg);
       setProfileState("error");
+      toast.error("Couldn't save profile", msg);
     }
   }
 
@@ -158,10 +162,13 @@ export default function SettingsPage() {
       setPasswordState("saved");
       setCurrentPassword("");
       setNewPassword("");
+      toast.success("Password changed");
       setTimeout(() => setPasswordState("idle"), 2500);
     } catch (err) {
-      setPasswordError(err instanceof Error ? err.message : "Failed to change password");
+      const msg = err instanceof Error ? err.message : "Failed to change password";
+      setPasswordError(msg);
       setPasswordState("error");
+      toast.error("Couldn't change password", msg);
     }
   }
 
@@ -257,7 +264,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Profile */}
-      <div className="glass rounded-xl p-5 space-y-4">
+      <div className="tick-frame bg-card border border-border p-5 space-y-4">
         <h2 className="text-sm font-semibold">Profile</h2>
         <form onSubmit={handleSaveProfile} className="space-y-3">
           <div className="space-y-1.5">
@@ -302,7 +309,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Password */}
-      <div className="glass rounded-xl p-5 space-y-4">
+      <div className="tick-frame bg-card border border-border p-5 space-y-4">
         <h2 className="text-sm font-semibold">Change Password</h2>
         <form onSubmit={handleChangePassword} className="space-y-3">
           <div className="space-y-1.5">
@@ -349,7 +356,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Subscription */}
-      <div className="glass rounded-xl p-5 space-y-3">
+      <div className="tick-frame bg-card border border-border p-5 space-y-3">
         <h2 className="text-sm font-semibold">Subscription</h2>
         {subLoading ? (
           <div className="space-y-2">
@@ -388,7 +395,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Security — Active Sessions */}
-      <div className="glass rounded-xl p-5 space-y-4">
+      <div className="tick-frame bg-card border border-border p-5 space-y-4">
         <h2 className="text-sm font-semibold">Active Sessions</h2>
         {activeSessionsLoading ? (
           <Skeleton className="h-10 w-full" />
@@ -414,7 +421,7 @@ export default function SettingsPage() {
         )}
       </div>
       {/* MFA */}
-      <div className="glass rounded-xl p-5 space-y-4">
+      <div className="tick-frame bg-card border border-border p-5 space-y-4">
         <div className="flex items-center gap-2">
           {mfaEnabled
             ? <ShieldCheck className="h-4 w-4 text-success" />

@@ -11,7 +11,7 @@ test.describe("Billing page", () => {
   });
 
   test("renders the Billing heading", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Billing" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /credits & billing/i })).toBeVisible();
   });
 
   test("shows credit balance section", async ({ page }) => {
@@ -22,7 +22,7 @@ test.describe("Billing page", () => {
   test("renders all three credit pack cards", async ({ page }) => {
     // Credit pack section heading is "Buy Credits"; packs are Starter / Growth / Pro
     // The pack labels are <p> elements with font-semibold class and the pack name
-    await expect(page.getByText("Buy Credits")).toBeVisible();
+    await expect(page.getByText(/credit packs/i)).toBeVisible();
     // Each pack has a "Buy" button — 3 total
     const buyButtons = page.getByRole("button", { name: "Buy" });
     await expect(buyButtons).toHaveCount(3);
@@ -65,8 +65,8 @@ test.describe("Billing page", () => {
   test("shows subscription plans section when not subscribed", async ({ page }) => {
     // The plans section renders if the user is not subscribed
     // It may or may not be visible depending on test user's subscription status
-    const proHeading = page.getByText("Subscription Plans");
-    const activeSubBadge = page.getByText("Active Subscription");
+    const proHeading = page.getByText(/subscription plans/i);
+    const activeSubBadge = page.getByText(/active subscription/i);
 
     const hasPlans = await proHeading.isVisible().catch(() => false);
     const hasSub = await activeSubBadge.isVisible().catch(() => false);
@@ -78,14 +78,14 @@ test.describe("Billing page", () => {
   test("Subscribe button is visible on Pro tier card when not subscribed", async ({ page }) => {
     // Only shown when user is not subscribed
     const subscribeButtons = page.getByRole("button", { name: "Subscribe" });
-    const isSubscribed = await page.getByText("Active Subscription").isVisible().catch(() => false);
+    const isSubscribed = await page.getByText(/active subscription/i).isVisible().catch(() => false);
     if (!isSubscribed) {
       await expect(subscribeButtons.first()).toBeVisible();
     }
   });
 
   test("Subscribe button triggers a Stripe checkout redirect", async ({ page, context }) => {
-    const isSubscribed = await page.getByText("Active Subscription").isVisible().catch(() => false);
+    const isSubscribed = await page.getByText(/active subscription/i).isVisible().catch(() => false);
     if (isSubscribed) {
       test.skip();
       return;
@@ -112,7 +112,7 @@ test.describe("Billing — manage subscription", () => {
   test("Manage subscription button is visible when subscribed", async ({ page }) => {
     await page.goto("/billing");
 
-    const isSubscribed = await page.getByText("Active Subscription").isVisible().catch(() => false);
+    const isSubscribed = await page.getByText(/active subscription/i).isVisible().catch(() => false);
     if (!isSubscribed) {
       // Test user is not subscribed — skip
       test.skip();

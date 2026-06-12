@@ -2,9 +2,10 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
+import { useState } from "react";
 import {
   LayoutDashboard, BarChart2, Settings, User, Wrench,
-  LogOut, Shield, CheckSquare, Users, Sun, Moon, Package,
+  LogOut, Shield, CheckSquare, Users, Sun, Moon, Package, Menu, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -84,6 +85,7 @@ export function SidebarClient({ user }: SidebarClientProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { theme, setTheme } = useTheme();
+  const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = user.role === "admin" || user.role === "moderator";
 
   const isActive = (href: string) => {
@@ -98,7 +100,29 @@ export function SidebarClient({ user }: SidebarClientProps) {
   };
 
   return (
-    <aside className="w-56 shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col h-screen sticky top-0">
+    <>
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className="lg:hidden fixed top-3.5 left-3.5 z-40 h-9 w-9 flex items-center justify-center border border-border bg-card/90 backdrop-blur rounded-sm"
+        aria-label="Open menu"
+      >
+        <Menu className="h-4 w-4" />
+      </button>
+
+      {/* Mobile backdrop */}
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-40 bg-background/70 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+      )}
+
+      <aside
+        className={cn(
+          "w-56 shrink-0 border-r border-sidebar-border bg-sidebar flex flex-col h-screen z-50",
+          "lg:sticky lg:top-0 lg:translate-x-0",
+          "fixed inset-y-0 left-0 transition-transform duration-300 ease-out-expo",
+          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        )}
+      >
       {/* Logo */}
       <div className="px-4 h-16 flex items-center gap-2.5 border-b border-sidebar-border">
         <LogoMark className="h-6 w-6 text-foreground" />
@@ -108,10 +132,13 @@ export function SidebarClient({ user }: SidebarClientProps) {
             {user.role === "admin" ? "ADM" : "MOD"}
           </span>
         )}
+        <button onClick={() => setMobileOpen(false)} className="lg:hidden ml-1 text-muted-foreground hover:text-foreground" aria-label="Close menu">
+          <X className="h-4 w-4" />
+        </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 py-4 space-y-5 overflow-y-auto">
+      {/* Nav (tap a link → close the mobile drawer) */}
+      <nav className="flex-1 py-4 space-y-5 overflow-y-auto" onClick={() => setMobileOpen(false)}>
         <div>
           <p className="px-4 mb-1.5 microlabel">Console</p>
           <div>
@@ -171,6 +198,7 @@ export function SidebarClient({ user }: SidebarClientProps) {
           </Button>
         </div>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

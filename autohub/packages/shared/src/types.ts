@@ -67,14 +67,14 @@ export interface UsageData {
 /** A single row from the tool_usages table as returned by GET /api/tools/usage */
 export interface ToolUsageRow {
   id: string;
-  userId: string;
   toolId: string;
-  inputData: unknown;
+  toolName: string | null;
+  toolIcon: string | null;
+  outputType: string | null;
   outputData: unknown | null;
   creditsUsed: number;
   status: ToolUsageStatus;
   errorMessage: string | null;
-  ipAddress: string | null;
   createdAt: string;
   completedAt: string | null;
 }

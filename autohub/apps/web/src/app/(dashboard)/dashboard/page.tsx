@@ -35,9 +35,6 @@ type Layout = "grid" | "comfortable" | "list";
 // ── Tool Card ────────────────────────────────────────────────────────────────
 function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onUse: () => void }) {
   const canAfford = credits >= tool.creditCost;
-  const authorDisplay = tool.createdByUserId
-    ? tool.createdByUserId.slice(0, 10)
-    : "autohub";
 
   return (
     <div className="tick-frame group bg-card border border-border p-4 flex flex-col gap-3 hover:border-primary/50 hover:-translate-y-1 hover:shadow-glow transition-all duration-300 ease-out-expo">
@@ -52,7 +49,7 @@ function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onU
       </div>
       <div className="flex-1 space-y-1">
         <p className="font-display text-sm font-semibold leading-tight tracking-tight">{tool.name}</p>
-        <p className="font-mono text-[10px] text-muted-foreground truncate">@{authorDisplay}</p>
+        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">{tool.description}</p>
       </div>
       <div className="flex items-center justify-between">
         <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-[0.12em] px-2 py-0 h-5 rounded-none">

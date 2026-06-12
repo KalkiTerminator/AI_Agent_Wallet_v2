@@ -10,7 +10,7 @@ test.describe("Usage page — layout", () => {
   });
 
   test("renders the Usage heading", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: /usage/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /execution log/i })).toBeVisible();
   });
 
   test("shows table headers", async ({ page }) => {
@@ -33,13 +33,13 @@ test.describe("Usage page — layout", () => {
       () => !document.querySelector('[class*="animate-pulse"]'),
       { timeout: 10_000 }
     );
-    const rows = page.getByRole("row");
+    // The page renders either the "RECENT RUNS" data panel or an empty state.
+    const panel = page.getByText(/recent runs/i);
     const emptyState = page.getByText(/no usage|no executions|haven't used/i);
 
-    // Rows includes header row, so > 1 means data rows exist
-    const rowCount = await rows.count();
+    const hasPanel = await panel.isVisible().catch(() => false);
     const hasEmpty = await emptyState.isVisible().catch(() => false);
-    expect(rowCount > 1 || hasEmpty).toBe(true);
+    expect(hasPanel || hasEmpty).toBe(true);
   });
 });
 

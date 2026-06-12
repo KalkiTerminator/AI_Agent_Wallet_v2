@@ -101,9 +101,24 @@ toolsRouter.get("/usage", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c)
   const limit = Math.min(100, Math.max(1, Number(c.req.query("limit") ?? 20)));
   const offset = (page - 1) * limit;
 
+  // Join the tool name/icon/outputType so the UI never shows a raw UUID and can
+  // re-render a past run's stored output (output history).
   const rows = await db
-    .select()
+    .select({
+      id: toolUsages.id,
+      toolId: toolUsages.toolId,
+      toolName: aiTools.name,
+      toolIcon: aiTools.iconUrl,
+      outputType: aiTools.outputType,
+      outputData: toolUsages.outputData,
+      creditsUsed: toolUsages.creditsUsed,
+      status: toolUsages.status,
+      errorMessage: toolUsages.errorMessage,
+      createdAt: toolUsages.createdAt,
+      completedAt: toolUsages.completedAt,
+    })
     .from(toolUsages)
+    .leftJoin(aiTools, eq(aiTools.id, toolUsages.toolId))
     .where(and(eq(toolUsages.userId, user.userId), isNull(toolUsages.deletedAt)))
     .orderBy(desc(toolUsages.createdAt))
     .limit(limit)

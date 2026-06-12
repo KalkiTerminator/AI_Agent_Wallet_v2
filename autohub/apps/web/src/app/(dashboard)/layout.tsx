@@ -18,7 +18,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           <Suspense>
             <SidebarClient user={{ name: session.user.name ?? "", email: session.user.email ?? "", role: session.user.role }} />
           </Suspense>
-          <main className="flex-1 overflow-auto">{children}</main>
+          <main className="flex-1 overflow-auto pt-14 lg:pt-0">{children}</main>
           <CommandPalette />
           <OnboardingDialog />
         </div>
