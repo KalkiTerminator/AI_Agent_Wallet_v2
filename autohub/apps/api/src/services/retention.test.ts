@@ -19,7 +19,6 @@ describe("runRetentionPurge", () => {
     const result = await runRetentionPurge();
     expect(result).toHaveProperty("sessions");
     expect(result).toHaveProperty("toolUsages");
-    expect(result).toHaveProperty("executions");
     expect(result).toHaveProperty("webhookExecutionLog");
     expect(result).toHaveProperty("passwordResetTokens");
     expect(result).toHaveProperty("emailVerificationTokens");

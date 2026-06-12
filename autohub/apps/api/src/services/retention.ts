@@ -4,7 +4,6 @@ import { db } from "../db/index.js";
 export interface RetentionResult {
   sessions: number;
   toolUsages: number;
-  executions: number;
   webhookExecutionLog: number;
   passwordResetTokens: number;
   emailVerificationTokens: number;
@@ -14,7 +13,7 @@ export interface RetentionResult {
 export async function runRetentionPurge(): Promise<RetentionResult> {
   const now = new Date();
 
-  const [sessions, toolUsages, executions, webhookLog, resetTokens, verifyTokens, webhookEvents] =
+  const [sessions, toolUsages, webhookLog, resetTokens, verifyTokens, webhookEvents] =
     await Promise.all([
       // Revoked sessions older than 90 days
       db.execute(sql`
@@ -25,12 +24,6 @@ export async function runRetentionPurge(): Promise<RetentionResult> {
       // Soft-deleted tool_usages older than 2 years
       db.execute(sql`
         DELETE FROM tool_usages
-        WHERE deleted_at IS NOT NULL
-          AND deleted_at < ${new Date(now.getTime() - 2 * 365 * 24 * 60 * 60 * 1000)}
-      `),
-      // Soft-deleted executions older than 2 years
-      db.execute(sql`
-        DELETE FROM executions
         WHERE deleted_at IS NOT NULL
           AND deleted_at < ${new Date(now.getTime() - 2 * 365 * 24 * 60 * 60 * 1000)}
       `),
@@ -61,7 +54,6 @@ export async function runRetentionPurge(): Promise<RetentionResult> {
   return {
     sessions: (sessions as any).rowCount ?? 0,
     toolUsages: (toolUsages as any).rowCount ?? 0,
-    executions: (executions as any).rowCount ?? 0,
     webhookExecutionLog: (webhookLog as any).rowCount ?? 0,
     passwordResetTokens: (resetTokens as any).rowCount ?? 0,
     emailVerificationTokens: (verifyTokens as any).rowCount ?? 0,

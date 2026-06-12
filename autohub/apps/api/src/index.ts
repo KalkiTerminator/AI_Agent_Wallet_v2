@@ -15,7 +15,6 @@ import { adminRouter } from "./routes/admin.js";
 import { webhooksRouter } from "./routes/webhooks.js";
 import { authRouter } from "./routes/auth.js";
 import { creditsRouter } from "./routes/credits.js";
-import { executionsRouter } from "./routes/executions.js";
 import { accountRouter } from "./routes/account.js";
 import { complianceRouter } from "./routes/compliance.js";
 import { errorHandler } from "./middleware/error-handler.js";
@@ -110,7 +109,6 @@ app.route("/api/subscriptions", subscriptionsRouter);
 app.route("/api/admin", adminRouter);
 app.route("/api/webhooks", webhooksRouter);
 app.route("/api/credits", creditsRouter);
-app.route("/api/executions", executionsRouter);
 app.route("/api/account", accountRouter);
 app.route("/api/admin/compliance", complianceRouter);
 

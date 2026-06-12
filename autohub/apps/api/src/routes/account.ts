@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq, and, isNull, desc } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
-  users, aiTools, executions, toolUsages, payments, consentLogs, dataSubjectRequests, userRoles, credits,
+  users, aiTools, toolUsages, payments, consentLogs, dataSubjectRequests, userRoles, credits,
 } from "../db/schema.js";
 import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION, RATE_LIMITS } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
@@ -36,11 +36,6 @@ accountRouter.get("/export", requireAuth, async (c) => {
     .from(payments)
     .where(eq(payments.userId, user.userId));
 
-  const userExecutions = await db
-    .select({ id: executions.id, toolId: executions.toolId, status: executions.status, creditsDebited: executions.creditsDebited, startedAt: executions.startedAt })
-    .from(executions)
-    .where(and(eq(executions.userId, user.userId), isNull(executions.deletedAt)));
-
   await logAuditEvent({ userId: user.userId, action: "gdpr.data_exported", ip, requestId });
 
   return c.json({
@@ -48,7 +43,6 @@ accountRouter.get("/export", requireAuth, async (c) => {
     user: dbUser,
     toolUsages: usages,
     payments: userPayments,
-    executions: userExecutions,
   });
 });
 
@@ -79,7 +73,6 @@ accountRouter.delete("/", requireAuth, async (c) => {
     }).where(eq(users.id, user.userId));
 
     await tx.update(aiTools).set({ deletedAt: now }).where(eq(aiTools.createdByUserId, user.userId));
-    await tx.update(executions).set({ deletedAt: now }).where(eq(executions.userId, user.userId));
     await tx.update(toolUsages).set({ deletedAt: now }).where(eq(toolUsages.userId, user.userId));
   });
 

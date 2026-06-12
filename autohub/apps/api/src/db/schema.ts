@@ -6,7 +6,6 @@ import {
 export const toolStatusEnum = pgEnum("tool_status", ["draft", "pending_approval", "approved", "rejected", "archived", "degraded", "broken"]);
 export const toolVisibilityEnum = pgEnum("tool_visibility", ["private", "public"]);
 export const executionModeEnum = pgEnum("execution_mode", ["sync", "async"]);
-export const executionStatusEnum = pgEnum("execution_status", ["pending", "success", "failed", "timeout", "sandbox"]);
 
 // ─── users ──────────────────────────────────────────────
 export const users = pgTable("users", {
@@ -197,24 +196,6 @@ export const toolAccess = pgTable("tool_access", {
 }, (t) => [
   primaryKey({ columns: [t.toolId, t.userId] }),
   index("tool_access_user_id_idx").on(t.userId),
-]);
-
-// ─── executions ─────────────────────────────────────────
-export const executions = pgTable("executions", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  toolId: uuid("tool_id").notNull().references(() => aiTools.id, { onDelete: "cascade" }),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  status: executionStatusEnum("status").notNull().default("pending"),
-  requestPayload: jsonb("request_payload"),
-  responsePayload: jsonb("response_payload"),
-  error: text("error"),
-  creditsDebited: integer("credits_debited").notNull().default(0),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp("completed_at", { withTimezone: true }),
-}, (t) => [
-  index("executions_tool_id_idx").on(t.toolId),
-  index("executions_user_id_idx").on(t.userId),
 ]);
 
 // ─── app_config ─────────────────────────────────────────

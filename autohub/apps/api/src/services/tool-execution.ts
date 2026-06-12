@@ -5,6 +5,7 @@ import type { ToolUsageStatus } from "@autohub/shared";
 import { decrypt } from "./crypto.js";
 import { signPayload } from "./hmac.js";
 import { safeFetch, SSRFError } from "./url-guard.js";
+import { canAttempt, recordSuccess, recordFailure } from "./circuit-breaker.js";
 
 // Read a webhook response body without silently discarding non-JSON output.
 // Prefers parsed JSON, falls back to the raw string, null only when empty.
@@ -107,14 +108,14 @@ export class ToolExecutionService {
     } else {
       // Deduct credits + insert usage record (in transaction)
       [usage] = await db.transaction(async (tx) => {
-        // Atomic deduction
-        await tx.execute(
+        // Atomic compare-and-deduct. The WHERE guard means the balance can
+        // never go negative, so the deduction's success must be read from the
+        // affected row count — NOT from a post-update "< 0" check (which can
+        // never be true and let concurrent boundary requests run for free).
+        const deduction = await tx.execute(
           sql`UPDATE credits SET current_credits = current_credits - ${tool.creditCost} WHERE user_id = ${userId} AND current_credits >= ${tool.creditCost}`
         );
-
-        // Re-check (race condition guard)
-        const [updated] = await tx.select().from(credits).where(eq(credits.userId, userId)).limit(1);
-        if (!updated || updated.currentCredits < 0) {
+        if (((deduction as { rowCount?: number }).rowCount ?? 0) === 0) {
           throw Object.assign(new Error("Insufficient credits"), { status: 402 });
         }
 
@@ -230,6 +231,24 @@ export class ToolExecutionService {
     const delays = [0, 2000, 8000]; // 0s, 2s, 8s
     const creditsDeducted = isAdmin ? 0 : tool.creditCost;
 
+    const refund = async () => {
+      if (!isAdmin) {
+        await db.execute(
+          sql`UPDATE credits SET current_credits = current_credits + ${tool.creditCost} WHERE user_id = ${usage.userId}`
+        );
+      }
+    };
+
+    // Circuit breaker: if this tool has been failing, reject fast and refund
+    // instead of hammering a dead endpoint (works across replicas via Redis).
+    if ((await canAttempt(tool.id)) === "reject") {
+      await refund();
+      await db.update(toolUsages)
+        .set({ status: "refunded", errorMessage: "Tool temporarily unavailable (circuit breaker open)", completedAt: new Date() })
+        .where(eq(toolUsages.id, usage.id));
+      return { usageId: usage.id, status: "refunded" as ToolUsageStatus, creditsDeducted: 0 };
+    }
+
     const body = JSON.stringify({ usageId: usage.id, inputs });
     const headers = await buildWebhookHeaders(tool, usage.id, body);
 
@@ -265,6 +284,7 @@ export class ToolExecutionService {
           });
 
           await db.update(toolUsages).set({ status: "success", outputData, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
+          await recordSuccess(tool.id);
           return { usageId: usage.id, status: "success" as ToolUsageStatus, output: outputData, creditsDeducted };
         }
 
@@ -296,12 +316,10 @@ export class ToolExecutionService {
       }
     }
 
-    // All attempts failed — refund credits (admins were never charged)
-    if (!isAdmin) {
-      await db.execute(
-        sql`UPDATE credits SET current_credits = current_credits + ${tool.creditCost} WHERE user_id = ${usage.userId}`
-      );
-    }
+    // All attempts failed — refund credits (admins were never charged) and
+    // record one breaker failure for the tool (not one per retry attempt).
+    await refund();
+    await recordFailure(tool.id);
     await db.update(toolUsages).set({ status: "refunded", errorMessage: lastError?.message, completedAt: new Date() }).where(eq(toolUsages.id, usage.id));
 
     return { usageId: usage.id, status: "refunded" as ToolUsageStatus, creditsDeducted: 0 };
