@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Bricolage_Grotesque, Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
 import { SessionProvider } from "next-auth/react";
 import { ThemeProvider } from "@/components/shared/ThemeProvider";
+import { ToasterProvider } from "@/components/shared/ToasterProvider";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           <SessionProvider>
             {children}
+            <ToasterProvider />
           </SessionProvider>
         </ThemeProvider>
       </body>
