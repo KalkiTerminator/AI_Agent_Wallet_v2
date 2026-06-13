@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { CheckCircle, XCircle, Clock, ChevronDown } from "lucide-react";
 import { ToolReviewChecklist, isChecklistComplete, type ReviewChecklist } from "./ToolReviewChecklist";
 import type { AITool } from "@/types";
+import { toast } from "@/lib/toast";
 
 interface Props {
   tools: AITool[];
@@ -39,6 +40,9 @@ export function ToolApprovalManager({ tools, onToolsChange }: Props) {
         session.apiToken
       );
       onToolsChange(tools.map((t) => t.id === toolId ? { ...t, ...res.data } : t));
+      toast.success(status === "approved" ? "Tool approved" : "Tool rejected");
+    } catch (err) {
+      toast.error("Action failed", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
@@ -62,7 +66,7 @@ export function ToolApprovalManager({ tools, onToolsChange }: Props) {
           const isOpen = openChecklist === tool.id;
 
           return (
-            <div key={tool.id} className="glass rounded-xl p-4 space-y-3">
+            <div key={tool.id} className="tick-frame bg-card border border-border p-4 space-y-3">
               <div className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium truncate">{tool.name}</p>

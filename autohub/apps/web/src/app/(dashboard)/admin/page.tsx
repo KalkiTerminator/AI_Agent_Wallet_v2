@@ -11,6 +11,8 @@ import { UserRoleManager } from "@/components/admin/UserRoleManager";
 import { ToolApprovalManager } from "@/components/admin/ToolApprovalManager";
 import { ToolManagement } from "@/components/admin/ToolManagement";
 import { ToolCreationForm } from "@/components/admin/ToolCreationForm";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { StatTile } from "@/components/shared/StatTile";
 import {
   LineChart,
   Line,
@@ -187,29 +189,11 @@ function AdminPageInner() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="font-display font-bold text-xl">Admin</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Platform overview and moderation
-        </p>
-      </div>
+      <PageHeader label="SYS / Command" title="Admin" description="Platform overview and moderation" />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {statCards.map(({ icon: Icon, label, value }) => (
-          <div
-            key={label}
-            className="glass rounded-xl p-4 flex items-center gap-3"
-          >
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-              <Icon className="h-4 w-4 text-primary" />
-            </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                {label}
-              </p>
-              <p className="text-xl font-bold font-mono">{value}</p>
-            </div>
-          </div>
+        {statCards.map(({ icon, label, value }) => (
+          <StatTile key={label} icon={icon} label={label} value={value} />
         ))}
       </div>
 
@@ -253,7 +237,7 @@ function AdminPageInner() {
             </Button>
           </div>
           {showCreate && (
-            <div className="glass rounded-xl p-4">
+            <div className="tick-frame bg-card border border-border p-4">
               <ToolCreationForm
                 onCreated={(tool) => {
                   setTools((prev) => [tool, ...prev]);
@@ -293,7 +277,7 @@ function AdminPageInner() {
           ) : (
             <div className="space-y-6">
               {/* Daily Revenue */}
-              <div className="glass rounded-xl p-4 space-y-3">
+              <div className="tick-frame bg-card border border-border p-4 space-y-3">
                 <h3 className="text-xs font-semibold">Daily Revenue</h3>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={analyticsData.charts.dailyRevenue}>
@@ -332,7 +316,7 @@ function AdminPageInner() {
               </div>
 
               {/* Daily Signups */}
-              <div className="glass rounded-xl p-4 space-y-3">
+              <div className="tick-frame bg-card border border-border p-4 space-y-3">
                 <h3 className="text-xs font-semibold">Daily Signups</h3>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={analyticsData.charts.dailySignups}>
@@ -362,7 +346,7 @@ function AdminPageInner() {
               </div>
 
               {/* Daily Executions */}
-              <div className="glass rounded-xl p-4 space-y-3">
+              <div className="tick-frame bg-card border border-border p-4 space-y-3">
                 <h3 className="text-xs font-semibold">Daily Executions</h3>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={analyticsData.charts.dailyExecutions}>
@@ -392,7 +376,7 @@ function AdminPageInner() {
               </div>
 
               {/* Active Subscriptions */}
-              <div className="glass rounded-xl p-4 space-y-3">
+              <div className="tick-frame bg-card border border-border p-4 space-y-3">
                 <h3 className="text-xs font-semibold">Active Subscriptions</h3>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={analyticsData.charts.activeSubscriptions}>
@@ -422,7 +406,7 @@ function AdminPageInner() {
               </div>
 
               {/* Top Tools */}
-              <div className="glass rounded-xl p-4 space-y-3">
+              <div className="tick-frame bg-card border border-border p-4 space-y-3">
                 <h3 className="text-xs font-semibold">
                   Top 5 Tools by Executions
                 </h3>

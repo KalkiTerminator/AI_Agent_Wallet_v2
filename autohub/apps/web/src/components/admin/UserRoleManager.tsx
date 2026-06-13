@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Plus, Trash2 } from "lucide-react";
 import type { UserWithRole } from "@/types";
+import { toast } from "@/lib/toast";
 
 const BUILT_IN_ROLES = ["admin", "moderator", "user"];
 
@@ -50,6 +51,9 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
     try {
       await apiClient.patch(`/api/admin/users/${userId}/role`, { role }, session.apiToken);
       onUsersChange(users.map((u) => (u.id === userId ? { ...u, role } : u)));
+      toast.success(`Role updated to ${role}`);
+    } catch (err) {
+      toast.error("Couldn't change role", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
@@ -61,6 +65,9 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
     try {
       await apiClient.delete(`/api/admin/users/${userId}`, session.apiToken);
       onUsersChange(users.filter((u) => u.id !== userId));
+      toast.success("User deactivated");
+    } catch (err) {
+      toast.error("Couldn't deactivate user", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
@@ -100,7 +107,7 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
   return (
     <div className="space-y-4">
       {/* Role configuration panel */}
-      <div className="glass rounded-xl p-4 space-y-3">
+      <div className="tick-frame bg-card border border-border p-4 space-y-3">
         <p className="text-xs font-medium">Available Roles</p>
         <div className="flex flex-wrap gap-2">
           {roles.map((role) => (
@@ -143,7 +150,7 @@ export function UserRoleManager({ users, onUsersChange }: Props) {
       </div>
 
       {/* Users table */}
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="tick-frame bg-card border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

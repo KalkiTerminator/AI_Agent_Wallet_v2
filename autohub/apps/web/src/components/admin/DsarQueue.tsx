@@ -76,7 +76,7 @@ export function DsarQueue({ dsars, loading, onResolved }: Props) {
 
   return (
     <>
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="tick-frame bg-card border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
@@ -116,7 +116,7 @@ export function DsarQueue({ dsars, loading, onResolved }: Props) {
           </SheetHeader>
           {selected && (
             <div className="space-y-4 mt-4">
-              <div className="glass rounded-xl p-3 space-y-1">
+              <div className="tick-frame bg-card border border-border p-3 space-y-1">
                 <p className="text-xs text-muted-foreground">User</p>
                 <p className="text-sm font-medium">{selected.userEmail}</p>
                 <p className="text-xs text-muted-foreground mt-1">Request</p>

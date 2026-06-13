@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ToggleLeft, ToggleRight, Archive, Pencil } from "lucide-react";
 import type { AITool } from "@/types";
+import { toast } from "@/lib/toast";
 
 interface Props {
   tools: AITool[];
@@ -27,6 +28,9 @@ export function ToolManagement({ tools, onToolsChange }: Props) {
         session.apiToken
       );
       onToolsChange(tools.map((t) => t.id === tool.id ? { ...t, ...res.data } : t));
+      toast.success(res.data.isActive ? "Tool enabled" : "Tool disabled");
+    } catch (err) {
+      toast.error("Couldn't update tool", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
@@ -38,13 +42,16 @@ export function ToolManagement({ tools, onToolsChange }: Props) {
     try {
       await apiClient.patch(`/api/tools/${tool.id}/status`, { status: "archived" }, session.apiToken);
       onToolsChange(tools.filter((t) => t.id !== tool.id));
+      toast.success(`"${tool.name}" archived`);
+    } catch (err) {
+      toast.error("Couldn't archive tool", err instanceof Error ? err.message : undefined);
     } finally {
       setBusy(null);
     }
   }
 
   return (
-    <div className="glass rounded-xl overflow-hidden">
+    <div className="tick-frame bg-card border border-border overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
