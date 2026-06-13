@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useCredits } from "@/hooks/useCredits";
 import { useTools } from "@/hooks/useTools";
 import { ToolExecuteDialog } from "@/components/dashboard/ToolExecuteDialog";
+import { LiveFeed } from "@/components/dashboard/LiveFeed";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -315,8 +316,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Right account panel */}
-      <div className="w-56 shrink-0 border-l border-border p-4 hidden lg:flex flex-col">
+      <div className="w-56 shrink-0 border-l border-border p-4 hidden lg:flex flex-col gap-4">
         <AccountPanel credits={credits} liveCount={liveCount} soonCount={soonCount} />
+        <LiveFeed />
       </div>
 
       <ToolExecuteDialog
