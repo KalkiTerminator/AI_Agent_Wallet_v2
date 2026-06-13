@@ -29,10 +29,11 @@ export interface AITool {
 }
 
 // ─── Tool Enums ─────────────────────────────────────────
-export type ToolStatus = "draft" | "pending_approval" | "approved" | "rejected" | "archived";
+// Mirror the DB pgEnums exactly (apps/api/src/db/schema.ts).
+export type ToolStatus = "draft" | "pending_approval" | "approved" | "rejected" | "archived" | "degraded" | "broken";
 export type ToolVisibility = "private" | "public";
 export type ExecutionMode = "sync" | "async";
-export type ExecutionStatus = "pending" | "success" | "failed" | "timeout";
+export type ExecutionStatus = "pending" | "success" | "failed" | "timeout" | "sandbox";
 
 export interface InputField {
   id?: string;
