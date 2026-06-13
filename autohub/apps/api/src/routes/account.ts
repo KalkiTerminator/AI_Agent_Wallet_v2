@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { eq, and, isNull, desc } from "drizzle-orm";
+import { randomBytes } from "crypto";
+import { z } from "zod";
 import { db } from "../db/index.js";
 import {
-  users, aiTools, toolUsages, payments, consentLogs, dataSubjectRequests, userRoles, credits,
+  users, aiTools, toolUsages, payments, consentLogs, dataSubjectRequests, userRoles, credits, apiKeys,
 } from "../db/schema.js";
 import { ConsentSchema, DsarSchema, CURRENT_POLICY_VERSION, RATE_LIMITS } from "@autohub/shared";
 import { zValidator } from "@hono/zod-validator";
@@ -10,8 +12,52 @@ import { requireAuth } from "../middleware/auth.js";
 import { rateLimitIp } from "../middleware/rate-limit.js";
 import { logAuditEvent } from "../services/audit.js";
 import { revokeAllSessions } from "./auth.js";
+import { hashApiKey, API_KEY_PREFIX } from "../middleware/api-key.js";
 
 const accountRouter = new Hono();
+
+const ApiKeyCreateSchema = z.object({ name: z.string().min(1).max(60) }).strict();
+
+// POST /api/account/api-keys — create a key (plaintext returned ONCE)
+accountRouter.post("/api-keys", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), zValidator("json", ApiKeyCreateSchema), async (c) => {
+  const user = c.get("user");
+  const { name } = c.req.valid("json");
+  const raw = API_KEY_PREFIX + randomBytes(24).toString("hex");
+  const [row] = await db
+    .insert(apiKeys)
+    .values({ userId: user.userId, name, keyHash: hashApiKey(raw), prefix: raw.slice(0, 11) })
+    .returning({ id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix, createdAt: apiKeys.createdAt });
+  await logAuditEvent({ userId: user.userId, action: "account.api_key.created", resourceType: "api_key", resourceId: row.id });
+  return c.json({ data: { ...row, key: raw } }, 201);
+});
+
+// GET /api/account/api-keys — list (masked; never the full key)
+accountRouter.get("/api-keys", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select({
+      id: apiKeys.id, name: apiKeys.name, prefix: apiKeys.prefix,
+      lastUsedAt: apiKeys.lastUsedAt, revokedAt: apiKeys.revokedAt, createdAt: apiKeys.createdAt,
+    })
+    .from(apiKeys)
+    .where(eq(apiKeys.userId, user.userId))
+    .orderBy(desc(apiKeys.createdAt));
+  return c.json({ data: rows });
+});
+
+// DELETE /api/account/api-keys/:id — revoke a key
+accountRouter.delete("/api-keys/:id", requireAuth, rateLimitIp(RATE_LIMITS.COMPLIANCE), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const [updated] = await db
+    .update(apiKeys)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, user.userId), isNull(apiKeys.revokedAt)))
+    .returning({ id: apiKeys.id });
+  if (!updated) return c.json({ error: "API key not found" }, 404);
+  await logAuditEvent({ userId: user.userId, action: "account.api_key.revoked", resourceType: "api_key", resourceId: id });
+  return c.json({ data: { revoked: true } });
+});
 
 // GET /api/account/export — GDPR data export (Art. 20)
 accountRouter.get("/export", requireAuth, async (c) => {

@@ -13,6 +13,7 @@ import { CheckCircle, AlertCircle, Loader2, Copy, Check, ShieldCheck, ShieldOff 
 import type { SubscriptionStatus } from "@/types";
 import { env } from "@/lib/env";
 import { toast } from "@/lib/toast";
+import { ApiKeysPanel } from "@/components/settings/ApiKeysPanel";
 
 const API_BASE = env.NEXT_PUBLIC_API_URL;
 
@@ -602,6 +603,9 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      {/* API keys */}
+      <ApiKeysPanel />
     </div>
   );
 }

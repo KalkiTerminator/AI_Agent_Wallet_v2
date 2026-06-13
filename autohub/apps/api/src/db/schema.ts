@@ -132,6 +132,21 @@ export const toolRatings = pgTable("tool_ratings", {
   index("tool_ratings_tool_id_idx").on(t.toolId),
 ]);
 
+// ─── api_keys ───────────────────────────────────────────
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull().unique(), // sha256(HMAC) of the full key — plaintext never stored
+  prefix: text("prefix").notNull(),             // e.g. "ah_1a2b3c4d" shown for identification
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("api_keys_user_id_idx").on(t.userId),
+  index("api_keys_key_hash_idx").on(t.keyHash),
+]);
+
 // ─── payments ───────────────────────────────────────────
 export const payments = pgTable("payments", {
   id: uuid("id").primaryKey().defaultRandom(),

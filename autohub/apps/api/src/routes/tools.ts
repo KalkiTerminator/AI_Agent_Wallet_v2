@@ -7,6 +7,7 @@ import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/index.js";
 import { aiTools, toolUsages, toolAccess, webhookDomains, userFavorites, toolRatings } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireAuthOrApiKey } from "../middleware/api-key.js";
 import { requireRole } from "../middleware/rbac.js";
 import { requireVerified } from "../middleware/require-verified.js";
 import { rateLimitIp, rateLimitUser } from "../middleware/rate-limit.js";
@@ -740,7 +741,7 @@ toolsRouter.get("/:id", rateLimitIp(RATE_LIMITS.READS), async (c) => {
 });
 
 // POST /api/tools/:id/execute — two-phase commit execution
-toolsRouter.post("/:id/execute", requireAuth, requireVerified, rateLimitIp(RATE_LIMITS.TOOL_EXECUTE), rateLimitUser(30, 60_000), zValidator("json", ExecuteBodySchema), async (c) => {
+toolsRouter.post("/:id/execute", requireAuthOrApiKey, requireVerified, rateLimitIp(RATE_LIMITS.TOOL_EXECUTE), rateLimitUser(30, 60_000), zValidator("json", ExecuteBodySchema), async (c) => {
   const toolId = c.req.param("id");
   const user = c.get("user");
   const { inputs } = c.req.valid("json");

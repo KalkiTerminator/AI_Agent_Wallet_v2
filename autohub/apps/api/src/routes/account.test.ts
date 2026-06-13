@@ -23,6 +23,10 @@ vi.mock("../db/index.js", () => ({
 
 vi.mock("../services/audit.js", () => ({ logAuditEvent: vi.fn() }));
 vi.mock("./auth.js", () => ({ revokeAllSessions: vi.fn() }));
+vi.mock("../middleware/api-key.js", () => ({
+  hashApiKey: (k: string) => `hash:${k}`,
+  API_KEY_PREFIX: "ah_",
+}));
 vi.mock("@autohub/shared", async (importOriginal) => {
   const orig = await importOriginal() as any;
   return { ...orig, ConsentSchema: orig.ConsentSchema, DsarSchema: orig.DsarSchema };
