@@ -8,8 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Loader2, FlaskConical, Pencil, Trash2 } from "lucide-react";
+import { Plus, Loader2, FlaskConical, Pencil, Trash2, Package } from "lucide-react";
 import type { AITool } from "@/types";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { toast } from "@/lib/toast";
 
 function ToolStatusBadge({ status }: { status?: string }) {
   const map: Record<string, { label: string; className: string }> = {
@@ -55,6 +58,9 @@ export default function MyToolsPage() {
     try {
       await apiClient.patch(`/api/tools/${tool.id}/submit`, {}, session.apiToken);
       setTools((prev) => prev.map((t) => t.id === tool.id ? { ...t, toolStatus: "pending_approval" } : t));
+      toast.success("Submitted for review", `"${tool.name}" is now in the approval queue.`);
+    } catch (err) {
+      toast.error("Couldn't submit", err instanceof Error ? err.message : undefined);
     } finally {
       setSubmitting(null);
     }
@@ -79,41 +85,50 @@ export default function MyToolsPage() {
     if (!session?.apiToken || !deleteTool) return;
     setDeleting(true);
     try {
+      const name = deleteTool.name;
       await apiClient.delete(`/api/tools/${deleteTool.id}`, session.apiToken);
       setTools((prev) => prev.filter((t) => t.id !== deleteTool.id));
       setDeleteTool(null);
+      toast.success("Tool deleted", `"${name}" was removed.`);
+    } catch (err) {
+      toast.error("Couldn't delete tool", err instanceof Error ? err.message : undefined);
     } finally {
       setDeleting(false);
     }
   }
 
   return (
-    <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display font-bold text-xl">My Tools</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">Tools you have submitted</p>
-        </div>
-        <Button size="sm" className="h-7 text-xs gap-1.5" asChild>
-          <Link href="/tools/new"><Plus className="h-3.5 w-3.5" />Submit tool</Link>
-        </Button>
-      </div>
+    <div className="p-6 space-y-5">
+      <PageHeader
+        label="SYS / Tool dev"
+        title="My tools"
+        description="Tools you have submitted"
+        actions={
+          <Button size="sm" className="h-9 text-xs gap-1.5 rounded-sm font-mono uppercase tracking-[0.12em]" asChild>
+            <Link href="/tools/new"><Plus className="h-3.5 w-3.5" />Submit tool</Link>
+          </Button>
+        }
+      />
 
       {loading ? (
         <div className="space-y-2">
-          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16" />)}
         </div>
       ) : tools.length === 0 ? (
-        <div className="glass rounded-xl p-10 text-center space-y-3">
-          <p className="text-sm text-muted-foreground">You haven&apos;t submitted any tools yet.</p>
-          <Button size="sm" className="h-7 text-xs gap-1.5" asChild>
-            <Link href="/tools/new"><Plus className="h-3.5 w-3.5" />Submit your first tool</Link>
-          </Button>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="No tools yet"
+          description="Register your first webhook as a tool and submit it for review."
+          action={
+            <Button size="sm" className="h-9 text-xs gap-1.5 rounded-sm font-mono uppercase tracking-[0.12em]" asChild>
+              <Link href="/tools/new"><Plus className="h-3.5 w-3.5" />Submit your first tool</Link>
+            </Button>
+          }
+        />
       ) : (
         <div className="space-y-2">
           {tools.map((tool) => (
-            <div key={tool.id} className="glass rounded-xl p-4 space-y-2">
+            <div key={tool.id} className="tick-frame bg-card border border-border p-4 space-y-2">
               <div className="flex items-center gap-4">
                 <div className="h-8 w-8 rounded-lg bg-muted flex items-center justify-center text-base shrink-0">
                   {tool.iconUrl ?? "🔧"}

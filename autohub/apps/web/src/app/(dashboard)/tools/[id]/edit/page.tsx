@@ -14,6 +14,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Trash2, AlertCircle, CheckCircle } from "lucide-react";
 import { TOOL_CATEGORIES, FIELD_TYPES, OUTPUT_TYPES } from "@autohub/shared";
 import type { AITool, InputField } from "@/types";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { toast } from "@/lib/toast";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -100,10 +102,13 @@ export default function EditToolPage() {
         webhookRetries,
       }, session.apiToken);
       setSaveState("saved");
+      toast.success("Changes saved", willResetToDraft ? "Tool reset to draft — resubmit for review." : undefined);
       setTimeout(() => router.push("/tools/mine"), 1500);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to save tool");
+      const msg = err instanceof Error ? err.message : "Failed to save tool";
+      setErrorMsg(msg);
       setSaveState("error");
+      toast.error("Couldn't save changes", msg);
     }
   }
 
@@ -118,10 +123,8 @@ export default function EditToolPage() {
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
-      <div>
-        <h1 className="font-display font-bold text-xl">Edit Tool</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">{tool.name}</p>
-      </div>
+      <PageHeader label="SYS / Tool dev" title="Edit tool" description={tool.name} />
+
 
       {willResetToDraft && (
         <div className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-xs text-yellow-700 dark:text-yellow-400">
@@ -131,7 +134,7 @@ export default function EditToolPage() {
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <h2 className="text-sm font-semibold">Basic Info</h2>
           <div className="space-y-1.5">
             <Label htmlFor="name" className="text-xs">Tool name <span className="text-destructive">*</span></Label>
@@ -173,7 +176,7 @@ export default function EditToolPage() {
           </div>
         </div>
 
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Input Fields</h2>
             <Button type="button" variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={() => setInputFields((p) => [...p, emptyField()])}>
@@ -223,7 +226,7 @@ export default function EditToolPage() {
           ))}
         </div>
 
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Webhook</h2>
             <div className="flex items-center gap-2">

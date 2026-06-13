@@ -15,6 +15,8 @@ import { Loader2, Plus, Trash2, AlertCircle, CheckCircle } from "lucide-react";
 import { TOOL_CATEGORIES, FIELD_TYPES, OUTPUT_TYPES } from "@autohub/shared";
 import type { InputField } from "@/types";
 import { DomainVerifyModal } from "@/components/tools/DomainVerifyModal";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { toast } from "@/lib/toast";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -117,21 +119,23 @@ export default function NewToolPage() {
         session.apiToken
       );
       setSaveState("saved");
+      toast.success("Tool submitted", "It'll be reviewed before going live.");
       setTimeout(() => router.push("/tools/mine"), 1500);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : "Failed to submit tool");
+      const msg = err instanceof Error ? err.message : "Failed to submit tool";
+      setErrorMsg(msg);
       setSaveState("error");
+      toast.error("Couldn't submit tool", msg);
     }
   }
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
-      <div>
-        <h1 className="font-display font-bold text-xl">Submit a Tool</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Tools are reviewed before being made available to all users.
-        </p>
-      </div>
+      <PageHeader
+        label="SYS / Tool dev"
+        title="Submit a tool"
+        description="Tools are reviewed before being made available to all users."
+      />
 
       {hasVerifiedDomain === false && (
         <div className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-xs text-yellow-700 dark:text-yellow-400">
@@ -151,7 +155,7 @@ export default function NewToolPage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic info */}
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <h2 className="text-sm font-semibold">Basic Info</h2>
 
           <div className="space-y-1.5">
@@ -216,7 +220,7 @@ export default function NewToolPage() {
         </div>
 
         {/* Input fields */}
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Input Fields</h2>
             <Button type="button" variant="outline" size="sm" className="h-6 text-[10px] gap-1" onClick={addField}>
@@ -295,7 +299,7 @@ export default function NewToolPage() {
         </div>
 
         {/* Webhook */}
-        <div className="glass rounded-xl p-5 space-y-4">
+        <div className="tick-frame bg-card border border-border p-5 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Webhook</h2>
             <div className="flex items-center gap-2">

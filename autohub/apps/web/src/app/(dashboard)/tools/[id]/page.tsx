@@ -53,13 +53,13 @@ export default function ToolDetailPage() {
 
   return (
     <div className="p-6 max-w-2xl space-y-5">
-      <Link href="/dashboard" className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-fit">
+      <Link href="/dashboard" className="link-slide flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground hover:text-foreground transition-colors w-fit">
         <ArrowLeft className="h-3.5 w-3.5" />
-        Back to Dashboard
+        Back to console
       </Link>
 
       {/* Tool header */}
-      <div className="glass rounded-xl p-5 space-y-2">
+      <div className="tick-frame bg-card border border-border p-5 space-y-2">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
             <span className="text-3xl">{tool.iconUrl}</span>
@@ -74,8 +74,8 @@ export default function ToolDetailPage() {
       </div>
 
       {/* Execute CTA */}
-      <div className="glass rounded-xl p-5 space-y-3">
-        <h2 className="text-sm font-semibold">Run this tool</h2>
+      <div className="tick-frame tick-signal bg-card border border-border p-5 space-y-3">
+        <p className="microlabel">Run this tool</p>
         {!canAfford && (
           <p className="text-xs text-destructive flex items-center gap-1">
             <Zap className="h-3 w-3" />
@@ -85,10 +85,10 @@ export default function ToolDetailPage() {
         <Button
           onClick={() => setDialogOpen(true)}
           disabled={!canAfford}
-          className="h-9 text-xs shadow-glow"
+          className="h-10 px-5 rounded-sm font-mono text-xs uppercase tracking-[0.14em] shadow-glow"
         >
           <Play className="mr-1.5 h-3.5 w-3.5" />
-          Execute — {tool.creditCost} credits
+          Execute — {tool.creditCost} cr
         </Button>
       </div>
 

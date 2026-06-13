@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle, Loader2, Copy } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
+import { toast } from "@/lib/toast";
 
 interface Props {
   token: string;
@@ -52,8 +53,11 @@ export function DomainVerifyModal({ token, onVerified, onClose }: Props) {
     try {
       await apiClient.post(`/api/tools/domains/${domainId}/verify`, {}, token);
       setStep("done");
+      toast.success("Domain verified", "You can now submit tools on this domain.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Verification failed — check DNS propagation (may take up to 48h)");
+      const msg = err instanceof Error ? err.message : "Verification failed — check DNS propagation (may take up to 48h)";
+      setError(msg);
+      toast.error("Domain not verified yet", msg);
     } finally {
       setLoading(false);
     }

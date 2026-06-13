@@ -88,8 +88,8 @@ export function OnboardingDialog() {
     <Dialog open={open} onOpenChange={(o) => { if (!o) dismiss(); }}>
       <DialogContent className="max-w-sm">
         <DialogHeader className="items-center text-center space-y-3">
-          <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
-            <Icon className="h-6 w-6 text-white" />
+          <div className="tick-frame tick-signal h-12 w-12 bg-primary flex items-center justify-center">
+            <Icon className="h-6 w-6 text-primary-foreground" />
           </div>
           <DialogTitle className="text-base">{current.title}</DialogTitle>
           <DialogDescription className="text-xs leading-relaxed">
