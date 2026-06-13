@@ -406,6 +406,59 @@ toolsRouter.patch("/:id/rating", requireAuth, rateLimitUser(30, 60_000), zValida
   return c.json({ data: { toolId: id, rating } });
 });
 
+// GET /api/tools/:id/insights — creator/admin tool performance
+toolsRouter.get("/:id/insights", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+
+  const [tool] = await db.select().from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+  if (tool.createdByUserId !== user.userId && user.role !== "admin") {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  const [[usageStats], latencyRes, dailyRes] = await Promise.all([
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        success: sql<number>`count(*) FILTER (WHERE ${toolUsages.status} = 'success')::int`,
+        creditsEarned: sql<number>`coalesce(sum(${toolUsages.creditsUsed}), 0)::int`,
+      })
+      .from(toolUsages)
+      .where(and(eq(toolUsages.toolId, id), isNull(toolUsages.deletedAt))),
+    db.execute(sql`
+      SELECT
+        percentile_cont(0.5) WITHIN GROUP (ORDER BY duration_ms)::int AS p50,
+        percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms)::int AS p95
+      FROM webhook_execution_log
+      WHERE tool_id = ${id} AND duration_ms IS NOT NULL
+    `),
+    db.execute(sql`
+      SELECT d::date AS date, COUNT(tu.id)::int AS count
+      FROM generate_series(now() - '30 days'::interval, now(), '1 day'::interval) AS d
+      LEFT JOIN tool_usages tu ON date_trunc('day', tu.created_at) = date_trunc('day', d)
+        AND tu.tool_id = ${id} AND tu.deleted_at IS NULL
+      GROUP BY d::date ORDER BY d::date
+    `),
+  ]);
+
+  const latency = (latencyRes as unknown as { rows: Array<{ p50: number | null; p95: number | null }> }).rows[0] ?? { p50: null, p95: null };
+  const total = usageStats?.total ?? 0;
+
+  return c.json({
+    data: {
+      name: tool.name,
+      totalExecutions: total,
+      successCount: usageStats?.success ?? 0,
+      successRate: total > 0 ? (usageStats!.success / total) : null,
+      creditsEarned: usageStats?.creditsEarned ?? 0,
+      latencyP50Ms: latency.p50,
+      latencyP95Ms: latency.p95,
+      dailyExecutions: (dailyRes as unknown as { rows: unknown[] }).rows,
+    },
+  });
+});
+
 // POST /api/tools/:id/access — moderator grants access to a user
 toolsRouter.post("/:id/access", requireAuth, requireRole("moderator"), async (c) => {
   const user = c.get("user");

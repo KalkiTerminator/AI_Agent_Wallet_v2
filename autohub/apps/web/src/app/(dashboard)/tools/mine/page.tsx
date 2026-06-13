@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Plus, Loader2, FlaskConical, Pencil, Trash2, Package } from "lucide-react";
+import { Plus, Loader2, FlaskConical, Pencil, Trash2, Package, BarChart2 } from "lucide-react";
 import type { AITool } from "@/types";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -168,6 +168,9 @@ export default function MyToolsPage() {
                     <FlaskConical className="h-3 w-3" />Sandbox
                   </Button>
                 )}
+                <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-1" asChild>
+                  <Link href={`/tools/${tool.id}/insights`}><BarChart2 className="h-3 w-3" />Insights</Link>
+                </Button>
                 {tool.toolStatus !== "pending_approval" && (
                   <Button size="sm" variant="ghost" className="h-6 text-[10px] gap-1" asChild>
                     <Link href={`/tools/${tool.id}/edit`}><Pencil className="h-3 w-3" />Edit</Link>
