@@ -16,8 +16,12 @@ export function useTools() {
     setLoading(true);
     setError(null);
     try {
-      const res = await apiClient.get<{ data: AITool[] }>("/api/tools", session.apiToken);
-      setTools(res.data);
+      const [toolsRes, favRes] = await Promise.all([
+        apiClient.get<{ data: AITool[] }>("/api/tools", session.apiToken),
+        apiClient.get<{ data: string[] }>("/api/tools/favorites", session.apiToken).catch(() => ({ data: [] as string[] })),
+      ]);
+      setTools(toolsRes.data);
+      setFavorites(new Set(favRes.data));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load tools");
     } finally {
@@ -29,14 +33,41 @@ export function useTools() {
     fetchTools();
   }, [fetchTools]);
 
-  const toggleFavorite = useCallback((toolId: string) => {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(toolId)) next.delete(toolId);
-      else next.add(toolId);
-      return next;
-    });
-  }, []);
+  // Server-persisted favorite toggle with optimistic update + rollback on failure.
+  const toggleFavorite = useCallback(
+    (toolId: string) => {
+      if (!session?.apiToken) return;
+      const wasFav = favorites.has(toolId);
+      setFavorites((prev) => {
+        const next = new Set(prev);
+        if (wasFav) next.delete(toolId);
+        else next.add(toolId);
+        return next;
+      });
+      const call = wasFav
+        ? apiClient.delete(`/api/tools/${toolId}/favorite`, session.apiToken)
+        : apiClient.post(`/api/tools/${toolId}/favorite`, {}, session.apiToken);
+      void call.catch(() => {
+        // rollback
+        setFavorites((prev) => {
+          const next = new Set(prev);
+          if (wasFav) next.add(toolId);
+          else next.delete(toolId);
+          return next;
+        });
+      });
+    },
+    [session?.apiToken, favorites]
+  );
 
-  return { tools, loading, error, favorites, toggleFavorite, refetch: fetchTools };
+  // Persist a 1–5 rating; updates the local aggregate optimistically.
+  const rateTool = useCallback(
+    async (toolId: string, rating: number) => {
+      if (!session?.apiToken) return;
+      await apiClient.patch(`/api/tools/${toolId}/rating`, { rating }, session.apiToken);
+    },
+    [session?.apiToken]
+  );
+
+  return { tools, loading, error, favorites, toggleFavorite, rateTool, refetch: fetchTools };
 }

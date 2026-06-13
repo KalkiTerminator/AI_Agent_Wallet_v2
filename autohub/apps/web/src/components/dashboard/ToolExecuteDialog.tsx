@@ -9,9 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Play, Zap, CheckCircle, XCircle, MailCheck } from "lucide-react";
+import { Loader2, Play, Zap, CheckCircle, XCircle, MailCheck, Star } from "lucide-react";
 import { apiClient } from "@/lib/api-client";
 import { FileViewer } from "@/components/shared/FileViewer";
+import { toast } from "@/lib/toast";
 import type { AITool, ToolExecutionResult, InputField } from "@/types";
 
 interface ToolExecuteDialogProps {
@@ -32,8 +33,21 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
   const [result, setResult] = useState<ToolExecutionResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+  const [rating, setRating] = useState(0);
 
   if (!tool) return null;
+
+  const submitRating = async (value: number) => {
+    if (!session?.apiToken || !tool) return;
+    setRating(value);
+    try {
+      await apiClient.patch(`/api/tools/${tool.id}/rating`, { rating: value }, session.apiToken);
+      toast.success(`Rated ${value}/5 — thanks!`);
+    } catch {
+      toast.error("Couldn't save rating");
+      setRating(0);
+    }
+  };
 
   const needsVerification = errorMsg === "email_not_verified";
 
@@ -80,6 +94,7 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
     setInputs({});
     setResult(null);
     setErrorMsg("");
+    setRating(0);
     onOpenChange(false);
   };
 
@@ -176,7 +191,23 @@ export function ToolExecuteDialog({ tool, credits, open, onOpenChange, onSuccess
                 <FileViewer data={result.output} outputType={tool.outputType ?? "smart"} />
               </div>
             )}
-            <Button variant="outline" className="w-full h-8 text-xs" onClick={() => setState("idle")}>
+            {/* Rate this tool */}
+            <div className="flex items-center justify-between border-t border-border/60 pt-3">
+              <span className="microlabel">Rate this tool</span>
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => submitRating(n)}
+                    className="p-0.5 transition-transform hover:scale-110"
+                    aria-label={`Rate ${n} of 5`}
+                  >
+                    <Star className={`h-4 w-4 ${n <= rating ? "fill-warning text-warning" : "text-muted-foreground/40 hover:text-warning"}`} />
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button variant="outline" className="w-full h-9 text-xs rounded-sm font-mono uppercase tracking-[0.14em]" onClick={() => setState("idle")}>
               Run Again
             </Button>
           </div>

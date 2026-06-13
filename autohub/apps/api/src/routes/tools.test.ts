@@ -152,6 +152,7 @@ describe("GET /api/tools", () => {
     const chain = {
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue(tools),
+      groupBy: vi.fn().mockResolvedValue([]), // rating aggregates: none
     };
     mockDb.select.mockReturnValue(chain);
 
@@ -160,6 +161,7 @@ describe("GET /api/tools", () => {
     const json = await res.json();
     expect(json.data).toHaveLength(1);
     expect(json.data[0].name).toBe("GPT Summariser");
+    expect(json.data[0].ratingCount).toBe(0);
   });
 });
 

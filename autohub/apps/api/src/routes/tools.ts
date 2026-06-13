@@ -1,11 +1,11 @@
 import { Hono } from "hono";
-import { eq, and, desc, count, isNull } from "drizzle-orm";
+import { eq, and, desc, count, isNull, sql, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { resolveTxt } from "dns/promises";
 import { z } from "zod";
 import { zValidator } from "@hono/zod-validator";
 import { db } from "../db/index.js";
-import { aiTools, toolUsages, toolAccess, webhookDomains } from "../db/schema.js";
+import { aiTools, toolUsages, toolAccess, webhookDomains, userFavorites, toolRatings } from "../db/schema.js";
 import { requireAuth } from "../middleware/auth.js";
 import { requireRole } from "../middleware/rbac.js";
 import { requireVerified } from "../middleware/require-verified.js";
@@ -22,6 +22,8 @@ const toolsRouter = new Hono();
 const ExecuteBodySchema = z.object({
   inputs: z.record(z.unknown()).default({}),
 }).strict();
+
+const RatingSchema = z.object({ rating: z.number().int().min(1).max(5) }).strict();
 
 // Bounds match CreateToolSchema — returns an error string or null
 function validateToolNumerics(body: { creditCost?: number; webhookTimeout?: number; webhookRetries?: number }): string | null {
@@ -78,13 +80,44 @@ function sanitizeToolForClient(tool: typeof aiTools.$inferSelect) {
   };
 }
 
-// GET /api/tools — list approved active tools
+// GET /api/tools — list approved active tools, enriched with rating aggregates
 toolsRouter.get("/", rateLimitIp(RATE_LIMITS.READS), async (c) => {
   const tools = await db
     .select()
     .from(aiTools)
     .where(and(eq(aiTools.isActive, true), eq(aiTools.approvalStatus, "approved"), isNull(aiTools.deletedAt)));
-  return c.json({ data: tools.map(sanitizeToolForClient) });
+
+  // One grouped query for all rating aggregates, then merge in memory.
+  const ratingRows = await db
+    .select({
+      toolId: toolRatings.toolId,
+      avg: sql<number>`avg(${toolRatings.rating})::float`,
+      cnt: sql<number>`count(*)::int`,
+    })
+    .from(toolRatings)
+    .groupBy(toolRatings.toolId);
+  const ratingMap = new Map(ratingRows.map((r) => [r.toolId, r]));
+
+  return c.json({
+    data: tools.map((t) => {
+      const r = ratingMap.get(t.id);
+      return {
+        ...sanitizeToolForClient(t),
+        avgRating: r ? Math.round(r.avg * 10) / 10 : null,
+        ratingCount: r?.cnt ?? 0,
+      };
+    }),
+  });
+});
+
+// GET /api/tools/favorites — current user's favorited tool IDs
+toolsRouter.get("/favorites", requireAuth, rateLimitIp(RATE_LIMITS.READS), async (c) => {
+  const user = c.get("user");
+  const rows = await db
+    .select({ toolId: userFavorites.toolId })
+    .from(userFavorites)
+    .where(eq(userFavorites.userId, user.userId));
+  return c.json({ data: rows.map((r) => r.toolId) });
 });
 
 // GET /api/tools/mine — tools created by current user
@@ -336,6 +369,41 @@ toolsRouter.patch("/:id/visibility", requireAuth, requireRole("moderator"), asyn
   }
   const [updated] = await db.update(aiTools).set(updates).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).returning();
   return c.json({ data: sanitizeToolForClient(updated) });
+});
+
+// POST /api/tools/:id/favorite — favorite a tool (idempotent)
+toolsRouter.post("/:id/favorite", requireAuth, rateLimitUser(60, 60_000), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  await db.insert(userFavorites).values({ toolId: id, userId: user.userId }).onConflictDoNothing();
+  return c.json({ data: { toolId: id, favorited: true } });
+});
+
+// DELETE /api/tools/:id/favorite — unfavorite
+toolsRouter.delete("/:id/favorite", requireAuth, rateLimitUser(60, 60_000), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  await db.delete(userFavorites).where(and(eq(userFavorites.toolId, id), eq(userFavorites.userId, user.userId)));
+  return c.json({ data: { toolId: id, favorited: false } });
+});
+
+// PATCH /api/tools/:id/rating — rate a tool 1–5 (upsert per user)
+toolsRouter.patch("/:id/rating", requireAuth, rateLimitUser(30, 60_000), zValidator("json", RatingSchema), async (c) => {
+  const user = c.get("user");
+  const { id } = c.req.param();
+  const { rating } = c.req.valid("json");
+
+  const [tool] = await db.select({ id: aiTools.id }).from(aiTools).where(and(eq(aiTools.id, id), isNull(aiTools.deletedAt))).limit(1);
+  if (!tool) return c.json({ error: "Tool not found" }, 404);
+
+  await db
+    .insert(toolRatings)
+    .values({ toolId: id, userId: user.userId, rating })
+    .onConflictDoUpdate({
+      target: [toolRatings.userId, toolRatings.toolId],
+      set: { rating, updatedAt: new Date() },
+    });
+  return c.json({ data: { toolId: id, rating } });
 });
 
 // POST /api/tools/:id/access — moderator grants access to a user

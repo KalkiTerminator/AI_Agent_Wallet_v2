@@ -21,6 +21,9 @@ export interface AITool {
   rejectionReason?: string | null;
   enabled?: boolean;
   executionMode?: ExecutionMode;
+  // Rating aggregates, present on GET /api/tools
+  avgRating?: number | null;
+  ratingCount?: number;
   // Note: visibility/toolStatus/enabled/executionMode are notNull in DB but optional here
   // for backwards compat — existing API responses from GET /tools may not include them
 }

@@ -117,7 +117,20 @@ export const userFavorites = pgTable("user_favorites", {
   userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   toolId: uuid("tool_id").notNull().references(() => aiTools.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.userId, t.toolId)]);
+}, (t) => [unique().on(t.userId, t.toolId), index("user_favorites_user_id_idx").on(t.userId)]);
+
+// ─── tool_ratings ───────────────────────────────────────
+export const toolRatings = pgTable("tool_ratings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  toolId: uuid("tool_id").notNull().references(() => aiTools.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(), // 1–5
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  unique().on(t.userId, t.toolId),
+  index("tool_ratings_tool_id_idx").on(t.toolId),
+]);
 
 // ─── payments ───────────────────────────────────────────
 export const payments = pgTable("payments", {

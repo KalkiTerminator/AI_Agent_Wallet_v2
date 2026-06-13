@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Play, Zap, Grid3X3, LayoutGrid, List } from "lucide-react";
+import { Search, Play, Zap, Grid3X3, LayoutGrid, List, Heart, Star } from "lucide-react";
 import type { AITool } from "@/types";
 import { TOOL_CATEGORIES } from "@autohub/shared";
 
@@ -33,13 +33,31 @@ function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancell
 type Layout = "grid" | "comfortable" | "list";
 
 // ── Tool Card ────────────────────────────────────────────────────────────────
-function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onUse: () => void }) {
+function ToolCard({
+  tool,
+  credits,
+  onUse,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  tool: AITool;
+  credits: number;
+  onUse: () => void;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+}) {
   const canAfford = credits >= tool.creditCost;
 
   return (
     <div className="tick-frame group bg-card border border-border p-4 flex flex-col gap-3 hover:border-primary/50 hover:-translate-y-1 hover:shadow-glow transition-all duration-300 ease-out-expo">
       <div className="flex items-start justify-between">
-        <span className="status-dot status-dot-active opacity-60 group-hover:opacity-100 transition-opacity mt-1" />
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+          className="shrink-0 -m-1 p-1 transition-colors"
+          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+        >
+          <Heart className={`h-3.5 w-3.5 transition-all ${isFavorite ? "fill-primary text-primary" : "text-muted-foreground/50 hover:text-foreground"}`} />
+        </button>
         <Badge
           variant="secondary"
           className="text-[10px] font-mono px-2 py-0.5 rounded-none bg-muted text-muted-foreground group-hover:bg-primary/15 group-hover:text-primary transition-colors"
@@ -51,15 +69,21 @@ function ToolCard({ tool, credits, onUse }: { tool: AITool; credits: number; onU
         <p className="font-display text-sm font-semibold leading-tight tracking-tight">{tool.name}</p>
         <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">{tool.description}</p>
       </div>
-      <div className="flex items-center justify-between">
-        <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-[0.12em] px-2 py-0 h-5 rounded-none">
+      <div className="flex items-center justify-between gap-2">
+        <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-[0.12em] px-2 py-0 h-5 rounded-none shrink-0">
           {tool.category}
         </Badge>
+        {tool.ratingCount ? (
+          <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground" title={`${tool.ratingCount} rating${tool.ratingCount === 1 ? "" : "s"}`}>
+            <Star className="h-2.5 w-2.5 fill-warning text-warning" />
+            {tool.avgRating?.toFixed(1)}
+          </span>
+        ) : null}
         <Button
           size="sm"
           onClick={onUse}
           disabled={!canAfford}
-          className="h-7 text-[10px] font-mono uppercase tracking-[0.12em] px-3 gap-1 rounded-sm"
+          className="h-7 text-[10px] font-mono uppercase tracking-[0.12em] px-3 gap-1 rounded-sm ml-auto"
         >
           <Play className="h-2.5 w-2.5 fill-current" />
           Run
@@ -122,7 +146,7 @@ function AccountPanel({
 export default function DashboardPage() {
   const { data: session } = useSession();
   const { credits } = useCredits();
-  const { tools, loading: toolsLoading } = useTools();
+  const { tools, loading: toolsLoading, favorites, toggleFavorite } = useTools();
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -141,11 +165,13 @@ export default function DashboardPage() {
         (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)
       );
     }
-    if (category !== "All") {
+    if (category === "★ Favorites") {
+      list = list.filter((t) => favorites.has(t.id));
+    } else if (category !== "All") {
       list = list.filter((t) => t.category === category);
     }
     return list;
-  }, [tools, search, category]);
+  }, [tools, search, category, favorites]);
 
   const liveCount = filtered.length;
   const soonCount = useMemo(() => Math.max(0, tools.length - filtered.length), [tools, filtered]);
@@ -234,7 +260,7 @@ export default function DashboardPage() {
 
           {/* Category tabs */}
           <div className="flex items-center gap-1.5 flex-wrap rise" style={{ "--rise-delay": "180ms" } as CSSProperties}>
-            {["All", ...TOOL_CATEGORIES].map((cat) => (
+            {["All", "★ Favorites", ...TOOL_CATEGORIES].map((cat) => (
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
@@ -278,6 +304,8 @@ export default function DashboardPage() {
                     tool={tool}
                     credits={credits ?? 0}
                     onUse={() => openTool(tool)}
+                    isFavorite={favorites.has(tool.id)}
+                    onToggleFavorite={() => toggleFavorite(tool.id)}
                   />
                 ))}
               </div>
