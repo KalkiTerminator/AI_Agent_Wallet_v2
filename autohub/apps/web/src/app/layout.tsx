@@ -23,7 +23,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AutoHub — Mission Control for AI Tools",
+  title: "AutoHub Mission Control for AI Tools",
   description:
     "Register webhooks as AI tools, run them from one console, pay per execution. Credit-based AI tools marketplace with HMAC-secured callbacks.",
 };
