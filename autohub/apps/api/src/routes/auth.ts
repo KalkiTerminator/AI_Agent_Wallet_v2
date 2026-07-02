@@ -22,6 +22,26 @@ function hashVerifyToken(raw: string): string {
   return createHmac("sha256", env.NEXTAUTH_SECRET).update(raw).digest("hex");
 }
 
+// otplib v13 measures epochTolerance in SECONDS (v12 counted time steps). One
+// full period (30s) of tolerance == ±1 step — the standard drift allowance so
+// a code still validates across a period boundary or with minor phone/server
+// clock skew. The previous value of 1 meant ±1 SECOND, which rejected almost
+// every otherwise-valid code.
+const TOTP_EPOCH_TOLERANCE_SECONDS = 30;
+
+// v13 guardrails THROW (TokenLengthError / TokenFormatError) when the token is
+// not exactly 6 digits — e.g. a typo, stray spaces, or a backup code typed into
+// the same field. Swallow those so malformed input is treated as an invalid
+// code (and can fall through to the backup-code path) instead of bubbling up as
+// an unhandled 500.
+function verifyTotp(token: string, secret: string): boolean {
+  try {
+    return totpVerifySync({ token, secret, epochTolerance: TOTP_EPOCH_TOLERANCE_SECONDS }).valid;
+  } catch {
+    return false;
+  }
+}
+
 const authRouter = new Hono();
 
 authRouter.use("/login", rateLimitIpStrict(10, 60_000));
@@ -424,8 +444,7 @@ authRouter.post("/mfa/verify-setup", requireAuth, async (c) => {
   if (!dbUser?.mfaSecretEncrypted) return c.json({ error: "MFA setup not started" }, 400);
 
   const secret = await decrypt(dbUser.mfaSecretEncrypted);
-  const result = totpVerifySync({ token: body.code, secret, epochTolerance: 1 });
-  if (!result.valid) return c.json({ error: "Invalid TOTP code" }, 400);
+  if (!verifyTotp(body.code, secret)) return c.json({ error: "Invalid TOTP code" }, 400);
 
   const plainCodes: string[] = [];
   const hashedCodes: Array<{ userId: string; codeHash: string }> = [];
@@ -484,7 +503,7 @@ authRouter.post("/mfa/disable", requireAuth, async (c) => {
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
     const secret = await decrypt(dbUser.mfaSecretEncrypted);
-    verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
+    verified = verifyTotp(body.code, secret);
   }
 
   if (!verified) {
@@ -552,7 +571,7 @@ authRouter.post("/mfa/challenge", async (c) => {
   let verified = false;
   if (dbUser.mfaSecretEncrypted) {
     const secret = await decrypt(dbUser.mfaSecretEncrypted);
-    verified = totpVerifySync({ token: body.code, secret, epochTolerance: 1 }).valid;
+    verified = verifyTotp(body.code, secret);
   }
   if (!verified) {
     const backups = await db

@@ -27,6 +27,7 @@ vi.mock("jsonwebtoken", () => ({
   default: {
     sign: vi.fn().mockReturnValue("mock.jwt.token"),
     verify: vi.fn().mockReturnValue({ userId: "user-1", email: "user@example.com", role: "user" }),
+    decode: vi.fn().mockReturnValue({ jti: "jti-1", exp: Math.floor(Date.now() / 1000) + 300 }),
   },
 }));
 
@@ -256,5 +257,66 @@ describe("POST /api/auth/login", () => {
     });
 
     expect(res.status).toBe(401);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/auth/mfa/challenge
+//
+// otplib v13's guardrails THROW on any token that isn't exactly 6 digits. The
+// challenge handler must treat such input as an invalid code (and still reach
+// the backup-code fallback) rather than letting the throw surface as a 500.
+// ---------------------------------------------------------------------------
+describe("POST /api/auth/mfa/challenge", () => {
+  // select chain that resolves at .limit() (user / role lookups)
+  function limitChain(rows: unknown[]) {
+    return {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue(rows),
+    };
+  }
+  // select chain that resolves at .where() (backup-code lookup)
+  function whereChain(rows: unknown[]) {
+    return {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue(rows),
+    };
+  }
+
+  beforeEach(async () => {
+    const { default: jwt } = await import("jsonwebtoken");
+    vi.mocked(jwt.verify).mockReturnValue({ userId: "user-1", type: "mfa_pending", jti: "jti-1" } as never);
+  });
+
+  it("returns a clean 400 (not a 500) when the code is malformed", async () => {
+    // user has a TOTP secret; verifyTotp will throw internally on the 5-digit
+    // code and must be swallowed. No backup codes match.
+    mockSelect
+      .mockReturnValueOnce(limitChain([{ id: "user-1", email: "user@example.com", mfaSecretEncrypted: "v1:enc", emailVerifiedAt: null, deletedAt: null }]))
+      .mockReturnValueOnce(whereChain([])); // no backup codes
+
+    const res = await req("POST", "/api/auth/mfa/challenge", { mfaToken: "tok", code: "12345" });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json.error).toBe("Invalid MFA code");
+  });
+
+  it("accepts a backup code even though it is not a 6-digit TOTP", async () => {
+    // TOTP verification throws/fails on the non-numeric backup code, then the
+    // backup-code fallback matches (bcrypt.compare is mocked to true).
+    mockSelect
+      .mockReturnValueOnce(limitChain([{ id: "user-1", email: "user@example.com", fullName: "Alice", mfaSecretEncrypted: "v1:enc", emailVerifiedAt: null, deletedAt: null }]))
+      .mockReturnValueOnce(whereChain([{ id: "b1", codeHash: "hash", usedAt: null }]))
+      .mockReturnValueOnce(limitChain([{ userId: "user-1", role: "user" }])); // role lookup
+
+    mockUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) });
+
+    const res = await req("POST", "/api/auth/mfa/challenge", { mfaToken: "tok", code: "A1B2C3D4" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.token).toBe("mock.jwt.token");
   });
 });
