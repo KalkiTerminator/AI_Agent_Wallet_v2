@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
-import { env } from "@/lib/env";
 import { AuthShell } from "@/components/auth/AuthShell";
-
-const API_BASE = env.NEXT_PUBLIC_API_URL;
 
 export default function MfaChallengePage() {
   const { data: session, update } = useSession();
@@ -24,10 +21,12 @@ export default function MfaChallengePage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/api/auth/mfa/challenge`, {
+      // Same-origin proxy route — the server forwards to the API with the
+      // session's mfaToken, so this works regardless of the API's CORS config.
+      const res = await fetch("/api/mfa/challenge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mfaToken: session.mfaToken, code }),
+        body: JSON.stringify({ code }),
       });
       const data = await res.json() as { token?: string; user?: { id: string; email: string; fullName: string | null; role: string }; error?: string };
       if (!res.ok || !data.token) { setError(data.error ?? "Invalid code"); return; }
@@ -38,7 +37,7 @@ export default function MfaChallengePage() {
       router.push("/dashboard");
       router.refresh();
     } catch {
-      setError("Something went wrong");
+      setError("Network error — check your connection and try again");
     } finally {
       setLoading(false);
     }
