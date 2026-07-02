@@ -2,7 +2,17 @@ import { Resend } from "resend";
 import { env } from "../env.js";
 import { logger } from "../lib/logger.js";
 
-const resend = new Resend(env.RESEND_API_KEY);
+// RESEND_API_KEY is optional in the env schema, so the client must not be
+// constructed at import time — `new Resend(undefined)` throws, which crashed
+// any process that merely imports this module (e.g. the retention cron, which
+// never sends email). Construct lazily on first send instead.
+let resendClient: Resend | null = null;
+function getResend(): Resend | null {
+  if (!env.RESEND_API_KEY) return null;
+  resendClient ??= new Resend(env.RESEND_API_KEY);
+  return resendClient;
+}
+
 const FROM = env.RESEND_FROM_EMAIL ?? "noreply@autohub.app";
 const WEB_URL = env.AUTOHUB_WEB_URL;
 
@@ -16,11 +26,16 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
 }
 
-type EmailPayload = Parameters<typeof resend.emails.send>[0];
+type EmailPayload = Parameters<Resend["emails"]["send"]>[0];
 
 // Bounded, retried send so a slow/failing Resend never hangs the request thread.
 // Resend returns { error } instead of throwing — surface it so the retry triggers.
 async function send(payload: EmailPayload): Promise<void> {
+  const resend = getResend();
+  if (!resend) {
+    logger.warn({ to: (payload as { to?: unknown }).to }, "email-skipped-no-api-key");
+    throw new Error("RESEND_API_KEY not configured — email not sent");
+  }
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 2; attempt++) {
     try {
