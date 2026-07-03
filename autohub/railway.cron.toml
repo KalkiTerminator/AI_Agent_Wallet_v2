@@ -1,0 +1,23 @@
+# Config-as-code for the RETENTION CRON service (celebrated-victory).
+#
+# Why this file exists: both Railway services build from this repo, and the
+# default railway.toml starts the API server (node dist/index.js). A cron
+# container running the API never exits — Railway kills it when the next
+# scheduled run starts, which showed up as back-to-back 5-minute "runs".
+#
+# To apply: Railway → celebrated-victory → Settings → Config-as-code →
+# set the config file path to `railway.cron.toml`. Values here override
+# that service's dashboard settings; the API service keeps railway.toml.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+# The purge script does its work, writes an audit event, and EXITS —
+# which is what a cron container must do. No API server, no healthcheck.
+startCommand = "node dist/scripts/retention-cron.js"
+# Daily at 03:17 UTC. A data-retention purge has no business running
+# every 5 minutes; failures simply wait for the next day's run.
+cronSchedule = "17 3 * * *"
+restartPolicyType = "NEVER"
