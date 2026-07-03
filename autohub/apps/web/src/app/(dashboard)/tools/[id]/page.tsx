@@ -34,8 +34,8 @@ export default function ToolDetailPage() {
     return (
       <div className="p-6 space-y-4 max-w-2xl">
         <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-32 w-full" />
       </div>
     );
   }

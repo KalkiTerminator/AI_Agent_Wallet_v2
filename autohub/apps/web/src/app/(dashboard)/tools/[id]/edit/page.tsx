@@ -127,7 +127,7 @@ export default function EditToolPage() {
 
 
       {willResetToDraft && (
-        <div className="flex items-start gap-3 rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-4 text-xs text-yellow-700 dark:text-yellow-400">
+        <div className="tick-frame flex items-start gap-3 border border-warning/40 bg-warning/10 p-4 text-xs text-warning">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>Saving will re-submit this tool for review and temporarily remove it from the marketplace.</span>
         </div>

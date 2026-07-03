@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { apiClient } from "@/lib/api-client";
 import { useSubscription } from "@/hooks/useSubscription";
@@ -20,6 +21,17 @@ const SUBSCRIPTION_PRICE_IDS: Record<string, string> = {
   PRO: env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? "",
 };
 
+// Landing-page pricing CTAs arrive as /billing?intent=pro|credits — spotlight
+// the matching section so the user lands on what they clicked.
+function IntentReader({ onIntent }: { onIntent: (v: "pro" | "credits") => void }) {
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const intent = searchParams.get("intent");
+    if (intent === "pro" || intent === "credits") onIntent(intent);
+  }, [searchParams, onIntent]);
+  return null;
+}
+
 export default function BillingPage() {
   const { data: session } = useSession();
   const { credits, loading: creditsLoading } = useCredits();
@@ -28,8 +40,17 @@ export default function BillingPage() {
   const [packLoading, setPackLoading] = useState<string | null>(null);
   const [subPending, setSubPending] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [intent, setIntent] = useState<"pro" | "credits" | null>(null);
+  const packsRef = useRef<HTMLDivElement>(null);
+  const plansRef = useRef<HTMLDivElement>(null);
 
   const isSubscribed = subscription?.subscribed === true;
+
+  useEffect(() => {
+    if (!intent) return;
+    const target = intent === "credits" ? packsRef.current : plansRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [intent]);
 
   async function handleBuyCreditPack(credits: number) {
     if (!session?.apiToken) return;
@@ -75,6 +96,9 @@ export default function BillingPage() {
 
   return (
     <div className="p-6 max-w-3xl space-y-8">
+      <Suspense>
+        <IntentReader onIntent={setIntent} />
+      </Suspense>
       <PageHeader label="OPERATOR / Billing" title="Credits & billing" description="Buy credits, manage your subscription." />
 
       {/* Current balance */}
@@ -109,7 +133,7 @@ export default function BillingPage() {
       )}
 
       {/* Credit packs */}
-      <div className="space-y-3">
+      <div ref={packsRef} className={cn("space-y-3 transition-shadow duration-700", intent === "credits" && "ring-1 ring-primary/50 shadow-glow p-3 -m-3")}>
         <p className="microlabel">Credit packs · one-time, never expire</p>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {CREDIT_PACKS.map((pack) => (
@@ -133,7 +157,7 @@ export default function BillingPage() {
 
       {/* Subscription tiers */}
       {!isSubscribed && (
-        <div className="space-y-3">
+        <div ref={plansRef} className={cn("space-y-3 transition-shadow duration-700", intent === "pro" && "ring-1 ring-primary/50 shadow-glow p-3 -m-3")}>
           <p className="microlabel">Subscription plans · monthly credits that refresh</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {Object.entries(SUBSCRIPTION_TIERS)

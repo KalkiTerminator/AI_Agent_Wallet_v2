@@ -161,10 +161,10 @@ function AdminPageInner() {
         <Skeleton className="h-7 w-32" />
         <div className="grid grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
+            <Skeleton key={i} className="h-24" />
           ))}
         </div>
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64" />
       </div>
     );
   }
@@ -271,7 +271,7 @@ function AdminPageInner() {
           {analyticsLoading || !analyticsData ? (
             <div className="space-y-4">
               {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-48 rounded-xl" />
+                <Skeleton key={i} className="h-48" />
               ))}
             </div>
           ) : (
