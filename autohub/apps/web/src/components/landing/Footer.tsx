@@ -10,7 +10,7 @@ export function Footer() {
         <div className="absolute inset-0 bg-blueprint opacity-60 pointer-events-none [mask-image:linear-gradient(90deg,transparent,black_30%,black_70%,transparent)]" />
         <Reveal className="relative max-w-6xl mx-auto px-5 py-20 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
           <div className="space-y-3">
-            <p className="microlabel microlabel-signal">SYS.04 / Launch sequence</p>
+            <p className="microlabel microlabel-signal">SYS.06 / Launch sequence</p>
             <h2 className="font-display font-bold tracking-tight leading-none text-[clamp(1.9rem,4vw,3rem)]">
               Ready to take command?
             </h2>
@@ -36,9 +36,10 @@ export function Footer() {
           {
             head: "PRODUCT",
             links: [
-              { href: "/features", label: "Features" },
+              { href: "/#how", label: "How it works" },
               { href: "/#systems", label: "Systems" },
               { href: "/#pricing", label: "Pricing" },
+              { href: "/#faq", label: "FAQ" },
             ],
           },
           {
@@ -52,9 +53,9 @@ export function Footer() {
           {
             head: "PROTOCOL",
             links: [
-              { href: "/features", label: "HMAC Signing" },
-              { href: "/features", label: "Async Callbacks" },
-              { href: "/features", label: "Credit Wallet" },
+              { href: "/features#registration", label: "Tool Registration" },
+              { href: "/features#signing", label: "HMAC Signing" },
+              { href: "/features#access", label: "Access Control" },
             ],
           },
         ].map((col) => (

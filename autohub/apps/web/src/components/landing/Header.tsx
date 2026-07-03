@@ -43,9 +43,10 @@ export function Header() {
 
         <nav className="hidden md:flex items-center gap-8">
           {[
-            { href: "/features", label: "Features" },
+            { href: "/#how", label: "How it works" },
             { href: "/#systems", label: "Systems" },
             { href: "/#pricing", label: "Pricing" },
+            { href: "/features", label: "Specs" },
             { href: "/auth/login", label: "Sign in" },
           ].map((l) => (
             <Link key={l.href} href={l.href} className="link-slide font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground transition-colors">

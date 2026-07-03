@@ -8,13 +8,15 @@ interface RevealProps {
   className?: string;
   /** Stagger delay in ms */
   delay?: number;
+  /** Anchor id, forwarded to the wrapper so sections can be deep-linked */
+  id?: string;
 }
 
 /**
  * Reveals children with a rise+fade when scrolled into view.
  * Pure CSS transition driven by a one-shot IntersectionObserver.
  */
-export function Reveal({ children, className, delay = 0 }: RevealProps) {
+export function Reveal({ children, className, delay = 0, id }: RevealProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,7 +36,7 @@ export function Reveal({ children, className, delay = 0 }: RevealProps) {
   }, []);
 
   return (
-    <div ref={ref} className={cn("reveal", className)} style={{ "--reveal-delay": `${delay}ms` } as CSSProperties}>
+    <div ref={ref} id={id} className={cn("reveal", className)} style={{ "--reveal-delay": `${delay}ms` } as CSSProperties}>
       {children}
     </div>
   );

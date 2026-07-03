@@ -1,24 +1,27 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
+import { FigCaption } from "@/components/shared/FigCaption";
+import { CREDIT_TIERS, TOOL_CATEGORIES } from "@autohub/shared";
 
 function rise(ms: number): CSSProperties {
   return { "--rise-delay": `${ms}ms` } as CSSProperties;
 }
 
+const FREE_CREDITS = CREDIT_TIERS.FREE.creditsOnSignup;
+
+// Product-true execution trace: register → signed call → debit; async → callback armed.
 const TERMINAL_LINES = [
   { delay: 900, text: "$ autohub run summarize-q3 --input report.pdf", tone: "cmd" },
   { delay: 1150, text: "→ POST hooks.n8n.cloud/webhook/summarize", tone: "dim" },
-  { delay: 1400, text: "→ signature sha256 ✓ · resolved 104.21.6.42", tone: "dim" },
+  { delay: 1400, text: "→ X-AutoHub-Signature: sha256 ✓ · ssrf-guard pass", tone: "dim" },
   { delay: 1700, text: "✓ executed in 1.24s — 1 credit debited", tone: "ok" },
   { delay: 2000, text: "$ autohub run brand-kit --prompt \"launch teaser\"", tone: "cmd" },
-  { delay: 2250, text: "⠿ dispatching async · callback armed", tone: "warn" },
+  { delay: 2250, text: "⠿ dispatching async · signed callback armed", tone: "warn" },
 ] as const;
 
-const MARQUEE_ITEMS = [
-  "Text Processing", "Image Generation", "Language Processing", "Development",
-  "Marketing", "Communication", "Sales", "Webhook Automation", "n8n", "Zapier",
-];
+// Category list comes from shared constants so it can't drift from the console.
+const MARQUEE_ITEMS = [...TOOL_CATEGORIES, "Webhook Automation", "n8n", "Zapier", "Make"];
 
 export function HeroSection() {
   return (
@@ -55,25 +58,25 @@ export function HeroSection() {
 
           <div className="rise flex flex-wrap items-center gap-4" style={rise(480)}>
             <Button asChild size="lg" className="h-12 px-7 rounded-sm font-mono text-xs uppercase tracking-[0.18em] shadow-glow hover:shadow-hard hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-300 ease-out-expo">
-              <Link href="/auth/signup">Start free — 10 credits</Link>
+              <Link href="/auth/signup">Start free — {FREE_CREDITS} credits</Link>
             </Button>
             <Link
-              href="/features"
+              href="/#how"
               className="link-slide font-mono text-xs uppercase tracking-[0.18em] text-foreground/80 hover:text-foreground transition-colors"
             >
               See how it works ↗
             </Link>
           </div>
 
-          {/* Telemetry strip */}
-          <div className="rise grid grid-cols-3 max-w-md gap-px bg-border/60 border border-border/60 mt-2" style={rise(600)}>
+          {/* Telemetry strip — product facts, not marketing numbers */}
+          <div className="rise grid grid-cols-3 max-w-lg gap-px bg-border/60 border border-border/60 mt-2" style={rise(600)}>
             {[
-              { k: "EXEC / DAY", v: "12,400+" },
-              { k: "TOOLS LIVE", v: "180+" },
-              { k: "UPTIME", v: "99.98%" },
+              { k: "SIGNING", v: "HMAC-SHA256" },
+              { k: "EXECUTION", v: "SYNC + ASYNC" },
+              { k: "CREDIT COMMIT", v: "TWO-PHASE" },
             ].map((s) => (
               <div key={s.k} className="bg-background/80 backdrop-blur px-4 py-3">
-                <p className="font-mono text-lg font-semibold text-foreground tabular-nums">{s.v}</p>
+                <p className="font-mono text-[13px] font-semibold text-foreground whitespace-nowrap">{s.v}</p>
                 <p className="microlabel mt-1">{s.k}</p>
               </div>
             ))}
@@ -115,13 +118,13 @@ export function HeroSection() {
             </div>
             {/* Status footer */}
             <div className="flex items-center justify-between px-4 py-2 border-t border-border/70">
-              <span className="microlabel">CREDITS: 09</span>
+              <span className="microlabel">SIG ✓ VERIFIED</span>
               <span className="microlabel microlabel-signal">● LINK SECURE</span>
             </div>
           </div>
-          <p className="font-mono text-[10px] text-muted-foreground/60 mt-3 text-right tracking-[0.2em] uppercase">
-            fig. 01 — live execution feed
-          </p>
+          <div className="mt-3 flex justify-end">
+            <FigCaption n="01">signed execution trace, illustrative</FigCaption>
+          </div>
         </div>
       </div>
 
@@ -144,7 +147,7 @@ export function HeroSection() {
       </div>
 
       <p className="relative z-10 text-center font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/70 py-5 rise" style={rise(800)}>
-        No credit card required · 10 free credits on signup
+        No credit card required · {FREE_CREDITS} free credits on signup
       </p>
     </section>
   );
