@@ -106,9 +106,14 @@ export default function DashboardPage() {
 
   const role = session?.user?.role ?? "user";
   const canCreateTools = role === "admin" || role === "moderator";
-  // Prefer the human name; fall back to the email's local part, never the raw address
+  // Prefer the human name; fall back to the email's local part, never the raw
+  // address. After an MFA login NextAuth stores the email as `name` (the
+  // step-up response carries no fullName), so an @ in the name means email.
+  const rawName = session?.user?.name?.trim();
   const displayName =
-    session?.user?.name?.trim() || session?.user?.email?.split("@")[0] || "operator";
+    rawName && !rawName.includes("@")
+      ? rawName
+      : (session?.user?.email ?? rawName ?? "operator").split("@")[0];
 
   const filtered = useMemo(() => {
     let list = tools;
