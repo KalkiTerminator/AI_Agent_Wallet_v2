@@ -4,6 +4,7 @@ import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { DsarQueue } from "@/components/admin/DsarQueue";
+import { PageHeader } from "@/components/shared/PageHeader";
 
 interface Dsar {
   id: string;
@@ -46,10 +47,11 @@ export default function CompliancePage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="font-display font-bold text-xl">Compliance</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Data subject requests — 30 day response SLA</p>
-      </div>
+      <PageHeader
+        label="SYS / Compliance"
+        title="Compliance"
+        description="Data subject requests — 30 day response SLA"
+      />
       <DsarQueue dsars={dsars} loading={loading} onResolved={handleResolved} />
     </div>
   );

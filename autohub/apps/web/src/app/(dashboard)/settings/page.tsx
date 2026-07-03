@@ -14,6 +14,7 @@ import type { SubscriptionStatus } from "@/types";
 import { env } from "@/lib/env";
 import { toast } from "@/lib/toast";
 import { ApiKeysPanel } from "@/components/settings/ApiKeysPanel";
+import { PageHeader } from "@/components/shared/PageHeader";
 
 const API_BASE = env.NEXT_PUBLIC_API_URL;
 
@@ -259,10 +260,11 @@ export default function SettingsPage() {
 
   return (
     <div className="p-6 max-w-2xl space-y-6">
-      <div>
-        <h1 className="font-display font-bold text-xl">Settings</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">Manage your account preferences</p>
-      </div>
+      <PageHeader
+        label="OPERATOR / Settings"
+        title="Settings"
+        description="Profile, security, sessions, and API keys."
+      />
 
       {/* Profile */}
       <div className="tick-frame bg-card border border-border p-5 space-y-4">

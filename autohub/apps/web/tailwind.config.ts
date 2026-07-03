@@ -27,6 +27,10 @@ export default {
           foreground: "hsl(var(--primary-foreground))",
           glow: "hsl(var(--primary-glow))",
         },
+        signal: {
+          DEFAULT: "hsl(var(--signal))",
+          raw: "hsl(var(--signal-raw))",
+        },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
           foreground: "hsl(var(--secondary-foreground))",
@@ -75,6 +79,8 @@ export default {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+      // Keyframes live in globals.css (single animation system); the only
+      // exceptions are radix accordion measurements, which need the CSS var.
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -84,25 +90,11 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
-        "fade-in-up": {
-          "0%": { opacity: "0", transform: "translateY(20px)" },
-          "100%": { opacity: "1", transform: "translateY(0)" },
-        },
-        "pulse-glow": {
-          "0%, 100%": { opacity: "0.6" },
-          "50%": { opacity: "1" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "fade-in": "fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
-        "fade-in-up": "fade-in-up 0.6s cubic-bezier(0.4, 0, 0.2, 1) both",
-        "slide-up": "slideUp 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
-        float: "float 6s ease-in-out infinite",
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
-        marquee: "marquee 36s linear infinite",
-        "spin-slow": "spinSlow 14s linear infinite",
       },
       boxShadow: {
         "2xs": "var(--shadow-2xs)",

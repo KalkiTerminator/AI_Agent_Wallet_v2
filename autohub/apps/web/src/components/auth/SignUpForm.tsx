@@ -5,7 +5,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +35,12 @@ type SignUpFormValues = z.infer<typeof signUpSchema>;
 
 export function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Pricing CTAs arrive with ?intent=pro|credits — land the user on billing
+  // with that intent after signup instead of the generic dashboard.
+  const intent = searchParams.get("intent");
+  const destination =
+    intent === "pro" || intent === "credits" ? `/billing?intent=${intent}` : "/dashboard";
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -86,7 +93,7 @@ export function SignUpForm() {
       return;
     }
 
-    router.push("/dashboard");
+    router.push(destination);
     router.refresh();
   };
 
@@ -158,9 +165,9 @@ export function SignUpForm() {
 
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <a href="/auth/login" className="text-primary hover:underline">
+        <Link href="/auth/login" className="text-primary hover:underline">
           Sign in
-        </a>
+        </Link>
       </p>
     </form>
   );

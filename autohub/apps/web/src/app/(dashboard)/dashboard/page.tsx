@@ -1,19 +1,24 @@
 "use client";
 import { useState, useMemo, useEffect, Suspense, type CSSProperties } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCredits } from "@/hooks/useCredits";
 import { useTools } from "@/hooks/useTools";
+import { useSubscription } from "@/hooks/useSubscription";
+import { ToolCard } from "@/components/dashboard/ToolCard";
 import { ToolExecuteDialog } from "@/components/dashboard/ToolExecuteDialog";
 import { LiveFeed } from "@/components/dashboard/LiveFeed";
+import { LayoutToggle, type DashboardLayout } from "@/components/dashboard/LayoutToggle";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Play, Zap, Grid3X3, LayoutGrid, List, Heart, Star } from "lucide-react";
+import { Search, Zap, PackageOpen, Wrench } from "lucide-react";
 import type { AITool } from "@/types";
-import { TOOL_CATEGORIES } from "@autohub/shared";
+import { TOOL_CATEGORIES, SUBSCRIPTION_TIERS, CREDIT_TIERS } from "@autohub/shared";
 
 // ── Payment banner handler ────────────────────────────────────────────────────
 function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancelled" | null) => void }) {
@@ -31,81 +36,23 @@ function PaymentBannerHandler({ onBanner }: { onBanner: (v: "success" | "cancell
   return null;
 }
 
-type Layout = "grid" | "comfortable" | "list";
-
-// ── Tool Card ────────────────────────────────────────────────────────────────
-function ToolCard({
-  tool,
-  credits,
-  onUse,
-  isFavorite,
-  onToggleFavorite,
-}: {
-  tool: AITool;
-  credits: number;
-  onUse: () => void;
-  isFavorite: boolean;
-  onToggleFavorite: () => void;
-}) {
-  const canAfford = credits >= tool.creditCost;
-
-  return (
-    <div className="tick-frame group bg-card border border-border p-4 flex flex-col gap-3 hover:border-primary/50 hover:-translate-y-1 hover:shadow-glow transition-all duration-300 ease-out-expo">
-      <div className="flex items-start justify-between">
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-          className="shrink-0 -m-1 p-1 transition-colors"
-          aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
-        >
-          <Heart className={`h-3.5 w-3.5 transition-all ${isFavorite ? "fill-primary text-primary" : "text-muted-foreground/50 hover:text-foreground"}`} />
-        </button>
-        <Badge
-          variant="secondary"
-          className="text-[10px] font-mono px-2 py-0.5 rounded-none bg-muted text-muted-foreground group-hover:bg-primary/15 group-hover:text-primary transition-colors"
-        >
-          {tool.creditCost} CR
-        </Badge>
-      </div>
-      <div className="flex-1 space-y-1">
-        <p className="font-display text-sm font-semibold leading-tight tracking-tight">{tool.name}</p>
-        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-snug">{tool.description}</p>
-      </div>
-      <div className="flex items-center justify-between gap-2">
-        <Badge variant="outline" className="font-mono text-[9px] uppercase tracking-[0.12em] px-2 py-0 h-5 rounded-none shrink-0">
-          {tool.category}
-        </Badge>
-        {tool.ratingCount ? (
-          <span className="flex items-center gap-0.5 text-[10px] font-mono text-muted-foreground" title={`${tool.ratingCount} rating${tool.ratingCount === 1 ? "" : "s"}`}>
-            <Star className="h-2.5 w-2.5 fill-warning text-warning" />
-            {tool.avgRating?.toFixed(1)}
-          </span>
-        ) : null}
-        <Button
-          size="sm"
-          onClick={onUse}
-          disabled={!canAfford}
-          className="h-7 text-[10px] font-mono uppercase tracking-[0.12em] px-3 gap-1 rounded-sm ml-auto"
-        >
-          <Play className="h-2.5 w-2.5 fill-current" />
-          Run
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // ── Account Panel ────────────────────────────────────────────────────────────
 function AccountPanel({
   credits,
-  liveCount,
-  soonCount,
+  deckCount,
+  favoriteCount,
 }: {
   credits: number | null;
-  liveCount: number;
-  soonCount: number;
+  deckCount: number;
+  favoriteCount: number;
 }) {
-  const MAX_FREE_CREDITS = 100;
-  const pct = Math.min(100, ((credits ?? 0) / MAX_FREE_CREDITS) * 100);
+  const { subscription, loading: subLoading } = useSubscription();
+  const isPro = subscription?.subscribed ?? false;
+  const planName = subLoading ? "…" : isPro ? SUBSCRIPTION_TIERS.PRO.name.toUpperCase() : "FREE";
+  // Progress is measured against the plan's credit allowance — 500/mo on Pro,
+  // the signup grant on Free — so the bar means "runway left on your plan".
+  const allowance = isPro ? SUBSCRIPTION_TIERS.PRO.credits : CREDIT_TIERS.FREE.creditsOnSignup;
+  const pct = Math.min(100, ((credits ?? 0) / allowance) * 100);
 
   return (
     <div className="tick-frame tick-signal border border-border p-4 space-y-4 h-fit bg-card">
@@ -116,28 +63,29 @@ function AccountPanel({
       <div>
         <p className="font-display text-3xl font-bold tabular-nums leading-none">{credits ?? "—"}</p>
         <p className="microlabel mt-1.5">Credits available</p>
-        <Progress value={pct} className="h-1 mt-3 bg-muted [&>div]:bg-primary" />
+        <Progress value={pct} className="h-1 mt-3 bg-muted [&>div]:bg-primary" aria-label={`${credits ?? 0} of ${allowance} plan credits`} />
       </div>
       <div className="h-px bg-border" />
       <div className="space-y-2 font-mono text-[11px]">
         <div className="flex items-center justify-between">
           <span className="text-muted-foreground uppercase tracking-[0.12em]">Plan</span>
-          <span className="text-foreground">FREE</span>
+          <span className={isPro ? "text-primary" : "text-foreground"}>{planName}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground uppercase tracking-[0.12em]">Live</span>
-          <span className="text-primary">{liveCount}</span>
+          <span className="text-muted-foreground uppercase tracking-[0.12em]">Deck</span>
+          <span className="text-foreground tabular-nums">{deckCount}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-muted-foreground uppercase tracking-[0.12em]">Soon</span>
-          <span className="text-foreground">{soonCount}</span>
+          <span className="text-muted-foreground uppercase tracking-[0.12em]">Faves</span>
+          <span className="text-foreground tabular-nums">{favoriteCount}</span>
         </div>
       </div>
       <Button
+        asChild
         size="sm"
         className="w-full h-9 rounded-sm font-mono text-[10px] uppercase tracking-[0.18em] shadow-glow"
       >
-        + Upgrade
+        <Link href="/billing">{isPro ? "Manage plan" : "+ Upgrade"}</Link>
       </Button>
     </div>
   );
@@ -151,12 +99,21 @@ export default function DashboardPage() {
 
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
-  const [layout, setLayout] = useState<Layout>("grid");
+  const [layout, setLayout] = useState<DashboardLayout>("grid");
   const [selectedTool, setSelectedTool] = useState<AITool | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
+  const [paymentBanner, setPaymentBanner] = useState<"success" | "cancelled" | null>(null);
 
-  const displayName = session?.user?.name || session?.user?.email || "there";
+  const role = session?.user?.role ?? "user";
+  const canCreateTools = role === "admin" || role === "moderator";
+  // Prefer the human name; fall back to the email's local part, never the raw
+  // address. After an MFA login NextAuth stores the email as `name` (the
+  // step-up response carries no fullName), so an @ in the name means email.
+  const rawName = session?.user?.name?.trim();
+  const displayName =
+    rawName && !rawName.includes("@")
+      ? rawName
+      : (session?.user?.email ?? rawName ?? "operator").split("@")[0];
 
   const filtered = useMemo(() => {
     let list = tools;
@@ -173,9 +130,6 @@ export default function DashboardPage() {
     }
     return list;
   }, [tools, search, category, favorites]);
-
-  const liveCount = filtered.length;
-  const soonCount = useMemo(() => Math.max(0, tools.length - filtered.length), [tools, filtered]);
 
   const openTool = (tool: AITool) => {
     setSelectedTool(tool);
@@ -202,38 +156,28 @@ export default function DashboardPage() {
           <div className="flex-1 flex items-center gap-2">
             <span className="status-dot status-dot-active" />
             <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-              {toolsLoading ? "Scanning deck…" : `${filtered.length} tools armed`}
+              {toolsLoading ? "Scanning deck…" : `${filtered.length} of ${tools.length} tools armed`}
             </span>
           </div>
-          <div className="flex items-center gap-1 border border-border rounded-sm p-0.5">
-            <Button
-              variant={layout === "grid" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-6 w-6 p-0 rounded-md"
-              onClick={() => setLayout("grid")}
-            >
-              <Grid3X3 className="h-3 w-3" />
-            </Button>
-            <Button
-              variant={layout === "comfortable" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-6 w-6 p-0 rounded-md"
-              onClick={() => setLayout("comfortable")}
-            >
-              <LayoutGrid className="h-3 w-3" />
-            </Button>
-            <Button
-              variant={layout === "list" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-6 w-6 p-0 rounded-md"
-              onClick={() => setLayout("list")}
-            >
-              <List className="h-3 w-3" />
-            </Button>
-          </div>
+          <LayoutToggle layout={layout} onChange={setLayout} />
         </div>
 
         <div className="px-6 py-6 space-y-6 flex-1">
+          {paymentBanner && (
+            <div
+              role="status"
+              className={`tick-frame border px-4 py-3 font-mono text-xs ${
+                paymentBanner === "success"
+                  ? "border-success/50 bg-success/10 text-success"
+                  : "border-warning/50 bg-warning/10 text-warning"
+              }`}
+            >
+              {paymentBanner === "success"
+                ? "✓ Payment received — credits are on their way to your wallet."
+                : "Payment cancelled — no charge was made."}
+            </div>
+          )}
+
           {/* Welcome header */}
           <div className="rise" style={{ "--rise-delay": "0ms" } as CSSProperties}>
             <p className="microlabel microlabel-signal mb-2">Console / Tool deck</p>
@@ -265,6 +209,7 @@ export default function DashboardPage() {
               <button
                 key={cat}
                 onClick={() => setCategory(cat)}
+                aria-pressed={category === cat}
                 className={`px-3.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.14em] border transition-all duration-300 ${
                   category === cat
                     ? "bg-primary text-primary-foreground border-primary"
@@ -276,11 +221,11 @@ export default function DashboardPage() {
             ))}
           </div>
 
-          {/* Featured Tools */}
+          {/* Tool deck */}
           <div className="rise" style={{ "--rise-delay": "270ms" } as CSSProperties}>
             <div className="flex items-center gap-2.5 mb-4">
               <Zap className="h-3.5 w-3.5 text-primary" />
-              <h2 className="microlabel !text-foreground">Featured tools</h2>
+              <h2 className="microlabel !text-foreground">Tool deck</h2>
               <Badge className="font-mono text-[9px] uppercase tracking-[0.15em] bg-primary/10 text-primary border border-primary/30 rounded-none px-2 py-0">
                 ● Live
               </Badge>
@@ -290,13 +235,34 @@ export default function DashboardPage() {
             {toolsLoading ? (
               <div className={`grid gap-4 ${gridClass}`}>
                 {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton key={i} className="h-36 rounded-xl" />
+                  <Skeleton key={i} className={layout === "list" ? "h-12" : "h-[148px]"} />
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground text-sm">
-                {search ? `No tools found for "${search}"` : "No tools available yet"}
-              </div>
+              search || category !== "All" ? (
+                <EmptyState
+                  icon={Search}
+                  title="No tools match"
+                  description={search ? `Nothing in the deck matches "${search}".` : "No tools in this category yet."}
+                />
+              ) : canCreateTools ? (
+                <EmptyState
+                  icon={Wrench}
+                  title="The deck is empty"
+                  description="Register your first webhook as a tool — paste an n8n/Zapier URL, set a credit cost, submit for approval."
+                  action={
+                    <Button asChild size="sm" className="rounded-sm font-mono text-[10px] uppercase tracking-[0.18em]">
+                      <Link href="/tools/new">+ Register a tool</Link>
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  icon={PackageOpen}
+                  title="No tools published yet"
+                  description="The marketplace is being stocked. Check back soon — approved tools appear here automatically."
+                />
+              )
             ) : (
               <div className={`grid gap-4 ${gridClass}`}>
                 {filtered.map((tool) => (
@@ -304,6 +270,7 @@ export default function DashboardPage() {
                     key={tool.id}
                     tool={tool}
                     credits={credits ?? 0}
+                    layout={layout}
                     onUse={() => openTool(tool)}
                     isFavorite={favorites.has(tool.id)}
                     onToggleFavorite={() => toggleFavorite(tool.id)}
@@ -317,7 +284,7 @@ export default function DashboardPage() {
 
       {/* Right account panel */}
       <div className="w-56 shrink-0 border-l border-border p-4 hidden lg:flex flex-col gap-4">
-        <AccountPanel credits={credits} liveCount={liveCount} soonCount={soonCount} />
+        <AccountPanel credits={credits} deckCount={tools.length} favoriteCount={favorites.size} />
         <LiveFeed />
       </div>
 

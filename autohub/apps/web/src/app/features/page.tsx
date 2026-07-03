@@ -1,9 +1,17 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Header } from "@/components/landing/Header";
 import { Footer } from "@/components/landing/Footer";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/shared/Reveal";
 import { Webhook, Shield, Lock } from "lucide-react";
+import { CREDIT_TIERS } from "@autohub/shared";
+
+export const metadata: Metadata = {
+  title: "AutoHub — Technical Specification",
+  description:
+    "How AutoHub works at the protocol level: webhook registration, HMAC-SHA256 signing with replay protection, and three-tier role-based access control.",
+};
 
 export default function FeaturesPage() {
   return (
@@ -15,7 +23,7 @@ export default function FeaturesPage() {
         <div className="relative max-w-4xl mx-auto space-y-24">
           {/* Page header */}
           <Reveal className="space-y-4">
-            <p className="microlabel microlabel-signal">SYS.02 / Technical specification</p>
+            <p className="microlabel microlabel-signal">SPEC.00 / Technical specification</p>
             <h1 className="font-display font-bold tracking-tight leading-[0.98] text-[clamp(2.4rem,6vw,4rem)]">
               How the <span className="text-gradient">machine</span> works.
             </h1>
@@ -26,13 +34,13 @@ export default function FeaturesPage() {
           </Reveal>
 
           {/* Webhook Registration */}
-          <Reveal className="grid md:grid-cols-2 gap-10 items-center">
+          <Reveal id="registration" className="grid md:grid-cols-2 gap-10 items-center scroll-mt-28">
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2.5">
                 <span className="h-8 w-8 border border-border flex items-center justify-center">
                   <Webhook className="h-3.5 w-3.5 text-primary" />
                 </span>
-                <span className="microlabel microlabel-signal">01 / Registration</span>
+                <span className="microlabel microlabel-signal">SPEC.01 / Registration</span>
               </div>
               <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight">Register any HTTP webhook as a tool</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -51,7 +59,7 @@ export default function FeaturesPage() {
           </Reveal>
 
           {/* HMAC Security */}
-          <Reveal className="grid md:grid-cols-2 gap-10 items-center">
+          <Reveal id="signing" className="grid md:grid-cols-2 gap-10 items-center scroll-mt-28">
             <div className="tick-frame glass scanline p-5 font-mono text-xs space-y-1.5 text-muted-foreground order-2 md:order-1">
               <p className="microlabel mb-3">SIGNATURE</p>
               <p className="text-primary"># Headers on every callback</p>
@@ -66,7 +74,7 @@ export default function FeaturesPage() {
                 <span className="h-8 w-8 border border-border flex items-center justify-center">
                   <Shield className="h-3.5 w-3.5 text-primary" />
                 </span>
-                <span className="microlabel microlabel-signal">02 / Signing</span>
+                <span className="microlabel microlabel-signal">SPEC.02 / Signing</span>
               </div>
               <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight">Industry-standard HMAC signing</h2>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -77,13 +85,13 @@ export default function FeaturesPage() {
           </Reveal>
 
           {/* RBAC */}
-          <Reveal className="grid md:grid-cols-2 gap-10 items-center">
+          <Reveal id="access" className="grid md:grid-cols-2 gap-10 items-center scroll-mt-28">
             <div className="space-y-4">
               <div className="inline-flex items-center gap-2.5">
                 <span className="h-8 w-8 border border-border flex items-center justify-center">
                   <Lock className="h-3.5 w-3.5 text-primary" />
                 </span>
-                <span className="microlabel microlabel-signal">03 / Access control</span>
+                <span className="microlabel microlabel-signal">SPEC.03 / Access control</span>
               </div>
               <h2 className="font-display text-2xl md:text-3xl font-bold tracking-tight">Three-tier access model</h2>
               <div className="space-y-3 text-sm">
@@ -118,7 +126,7 @@ export default function FeaturesPage() {
           <Reveal className="text-center space-y-5 py-8">
             <p className="microlabel microlabel-signal">Launch sequence ready</p>
             <h2 className="font-display text-3xl font-bold tracking-tight">Ready to automate?</h2>
-            <p className="text-sm text-muted-foreground">Start free. 10 credits included. No credit card required.</p>
+            <p className="text-sm text-muted-foreground">Start free. {CREDIT_TIERS.FREE.creditsOnSignup} credits included. No credit card required.</p>
             <Button asChild size="lg" className="h-12 px-8 rounded-sm font-mono text-xs uppercase tracking-[0.18em] shadow-glow hover:shadow-hard hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all duration-300 ease-out-expo">
               <Link href="/auth/signup">Initiate free →</Link>
             </Button>

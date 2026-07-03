@@ -1,42 +1,43 @@
-import { Webhook, Shield, Zap, BarChart3, Lock, Globe } from "lucide-react";
+import { Webhook, Shield, Zap, Lock, KeyRound, CircuitBoard } from "lucide-react";
 import { Reveal } from "@/components/shared/Reveal";
 
+// Six real subsystems — each maps to shipped capability, not aspiration.
 const features = [
   {
     icon: Webhook,
     code: "WBH",
     title: "Webhook Aggregation",
-    description: "Paste any n8n webhook URL to register it as a tool. No code changes needed.",
+    description: "Paste any n8n, Zapier or Make webhook URL to register it as a tool. URLs and auth headers are encrypted at rest; no code changes needed.",
   },
   {
     icon: Shield,
     code: "SIG",
-    title: "HMAC-Secured Callbacks",
-    description: "Every tool gets a unique signing secret. Calls and callbacks are verified with SHA-256 — same standard as Stripe and GitHub.",
+    title: "HMAC-Signed Calls",
+    description: "Every tool gets a unique signing secret. Calls and callbacks carry SHA-256 signatures with a replay window — the same standard as Stripe and GitHub.",
   },
   {
     icon: Zap,
     code: "EXE",
     title: "Sync & Async Execution",
-    description: "Sync tools return results immediately. Async tools let n8n call back when ready — perfect for long-running workflows.",
+    description: "Sync tools return results immediately. Async tools let your workflow call back when ready — perfect for long-running jobs.",
   },
   {
     icon: Lock,
     code: "RBC",
     title: "Role-Based Access Control",
-    description: "Three-tier RBAC: users run tools, moderators create and share tools, admins approve and govern the platform.",
+    description: "Three-tier RBAC: users run tools, moderators create and share them, admins approve and govern. Private tools support per-user grants.",
   },
   {
-    icon: Globe,
-    code: "PUB",
-    title: "Public & Private Tools",
-    description: "Keep tools private to a team or publish to the marketplace after admin approval.",
+    icon: CircuitBoard,
+    code: "CBR",
+    title: "Circuit Breaker & Refunds",
+    description: "Failing endpoints trip a breaker: calls reject fast, credits refund automatically, and the tool is flagged degraded until it recovers.",
   },
   {
-    icon: BarChart3,
-    code: "CRD",
-    title: "Credit Wallet & Analytics",
-    description: "Credit-based billing with full execution history. Buy credits in packs or subscribe for monthly allowance.",
+    icon: KeyRound,
+    code: "API",
+    title: "API Keys & Audit Trail",
+    description: "Execute tools programmatically with scoped API keys. Every auth event and execution lands in an immutable audit log.",
   },
 ];
 
@@ -49,7 +50,7 @@ export function FeaturesSection() {
         {/* Section header */}
         <Reveal className="mb-16 grid md:grid-cols-12 gap-6 items-end">
           <div className="md:col-span-7 space-y-4">
-            <p className="microlabel microlabel-signal">SYS.02 / Capabilities</p>
+            <p className="microlabel microlabel-signal">SYS.03 / Capabilities</p>
             <h2 className="font-display font-bold tracking-tight leading-[1.02] text-[clamp(2rem,4.5vw,3.4rem)]">
               Every subsystem you need to{" "}
               <span className="text-gradient">automate at scale.</span>
@@ -100,7 +101,7 @@ export function FeaturesSection() {
         </div>
 
         <Reveal delay={120} className="mt-6 flex justify-between items-center">
-          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">fig. 02 — subsystem index</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">fig. 03 — subsystem index</span>
           <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground/60">06 / 06 nominal</span>
         </Reveal>
       </div>

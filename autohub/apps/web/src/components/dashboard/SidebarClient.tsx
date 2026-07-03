@@ -5,11 +5,10 @@ import { signOut } from "next-auth/react";
 import { useState } from "react";
 import {
   LayoutDashboard, BarChart2, Settings, User, Wrench,
-  LogOut, Shield, CheckSquare, Users, Sun, Moon, Package, Menu, X,
+  LogOut, Shield, CheckSquare, Users, Package, Menu, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useTheme } from "next-themes";
 
 interface SidebarClientProps {
   user: { name: string; email: string; role: string };
@@ -84,7 +83,6 @@ function NavLink({
 export function SidebarClient({ user }: SidebarClientProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdmin = user.role === "admin" || user.role === "moderator";
 
@@ -171,32 +169,20 @@ export function SidebarClient({ user }: SidebarClientProps) {
         )}
       </nav>
 
-      {/* Bottom: status + theme toggle + sign out */}
-      <div className="border-t border-sidebar-border">
-        <div className="px-4 py-2.5 flex items-center gap-2">
-          <span className="status-dot status-dot-active" />
-          <span className="microlabel">Online</span>
-        </div>
-        <div className="px-3 pb-3 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 rounded-sm text-muted-foreground hover:text-foreground"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title="Toggle theme"
-          >
-            {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 rounded-sm text-muted-foreground hover:text-destructive"
-            onClick={() => signOut({ callbackUrl: "/auth/login" })}
-            title="Sign out"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-          </Button>
-        </div>
+      {/* Bottom: status + sign out */}
+      <div className="border-t border-sidebar-border px-4 py-2.5 flex items-center gap-2">
+        <span className="status-dot status-dot-active" />
+        <span className="microlabel">Online</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="ml-auto h-7 w-7 p-0 rounded-sm text-muted-foreground hover:text-destructive"
+          onClick={() => signOut({ callbackUrl: "/auth/login" })}
+          title="Sign out"
+          aria-label="Sign out"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </Button>
       </div>
       </aside>
     </>
