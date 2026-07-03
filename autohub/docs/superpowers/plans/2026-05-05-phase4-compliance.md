@@ -233,7 +233,7 @@ export const ReviewChecklistSchema = z.object({
 
 ```bash
 cd autohub
-DATABASE_URL="postgresql://postgres:ElqBpAYUpLCQeYbexmpbboVZdcDGtjZu@caboose.proxy.rlwy.net:55012/railway" npx drizzle-kit migrate
+DATABASE_URL="postgresql://postgres:<ROTATED-USE-RAILWAY-DASHBOARD-VALUE>@caboose.proxy.rlwy.net:55012/railway" npx drizzle-kit migrate
 ```
 
 Expected output:

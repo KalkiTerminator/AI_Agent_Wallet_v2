@@ -23,15 +23,22 @@ import { db } from "./db/index.js";
 import { users, userRoles } from "./db/schema.js";
 import { eq, sql } from "drizzle-orm";
 import { getRedis } from "./middleware/rate-limit.js";
+import { buildCorsAllowlist, isOriginAllowed } from "./lib/cors.js";
+
+// Railway injects the deployed commit; expose it on /health so "which code
+// is live?" is answered by opening a URL instead of the deploy dashboard.
+const DEPLOYED_COMMIT = (process.env.RAILWAY_GIT_COMMIT_SHA ?? "unknown").slice(0, 7);
 
 const app = new Hono();
 
-const allowedOrigins = (env.AUTOHUB_CORS_ORIGINS ?? env.AUTOHUB_WEB_URL).split(",");
+// Normalized allowlist that also accepts each origin's www./apex twin — see
+// buildCorsAllowlist for why (env-var spelling drift is a silent outage).
+const allowedOrigins = buildCorsAllowlist(env.AUTOHUB_CORS_ORIGINS ?? env.AUTOHUB_WEB_URL);
 
 app.use(
   "*",
   cors({
-    origin: (origin) => (allowedOrigins.includes(origin) ? origin : null),
+    origin: (origin) => (isOriginAllowed(allowedOrigins, origin) ? origin : null),
     allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     credentials: true,
@@ -73,10 +80,10 @@ app.get("/health", async (c) => {
     } catch {
       redis = "down";
     }
-    return c.json({ status: "ok", db: "ok", redis }, 200);
+    return c.json({ status: "ok", db: "ok", redis, commit: DEPLOYED_COMMIT }, 200);
   } catch (err) {
     Sentry.captureException(err, { tags: { area: "healthcheck" } });
-    return c.json({ status: "error", db: "down" }, 503);
+    return c.json({ status: "error", db: "down", commit: DEPLOYED_COMMIT }, 503);
   }
 });
 

@@ -200,7 +200,7 @@ node --input-type=module <<'EOF'
 import pg from 'pg';
 import { readFileSync } from 'fs';
 const { Pool } = pg;
-const pool = new Pool({ connectionString: "postgresql://postgres:ElqBpAYUpLCQeYbexmpbboVZdcDGtjZu@caboose.proxy.rlwy.net:55012/railway" });
+const pool = new Pool({ connectionString: "postgresql://postgres:<ROTATED-USE-RAILWAY-DASHBOARD-VALUE>@caboose.proxy.rlwy.net:55012/railway" });
 const sql = readFileSync('./src/db/migrations/0005_phase2_security.sql', 'utf8');
 await pool.query(sql);
 console.log('Migration applied');
@@ -1592,7 +1592,7 @@ Expected: `Migrations applied successfully` followed by `AutoHub API running`.
 # Sign up → check email arrives → click link → confirm email_verified_at set
 node --input-type=module <<'EOF'
 import pg from 'pg';
-const pool = new pg.Pool({ connectionString: "postgresql://postgres:ElqBpAYUpLCQeYbexmpbboVZdcDGtjZu@caboose.proxy.rlwy.net:55012/railway" });
+const pool = new pg.Pool({ connectionString: "postgresql://postgres:<ROTATED-USE-RAILWAY-DASHBOARD-VALUE>@caboose.proxy.rlwy.net:55012/railway" });
 const res = await pool.query("SELECT email, email_verified_at, mfa_enabled, deleted_at FROM users ORDER BY created_at DESC LIMIT 5");
 console.table(res.rows);
 await pool.end();
